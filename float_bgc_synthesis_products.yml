@@ -1,0 +1,19 @@
+name: float_bgc_synthesis_products
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - xarray 
+  - dask 
+  - netCDF4 
+  - bottleneck 
+  - pandas 
+  - scipy 
+  - matplotlib 
+  - cartopy 
+  - gsw  
+  - jupyter 
+  - jupytext
+  - pip
+  - pip:
+    - PyCO2SYS
