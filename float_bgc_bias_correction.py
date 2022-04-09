@@ -37,6 +37,7 @@ import cartopy.crs as ccrs
 import PyCO2SYS as pyco2
 import gsw
 import float_data_processing as fl
+import carbon_utils
 
 # Create data directories
 
@@ -77,6 +78,7 @@ for v in flagvars:
 #get unique stations
 gdap_s = gdap.groupby(['G2cruise','G2station','G2cast'])
 
+# +
 for n, group in gdap_s:
     #need to only do if not all -9999!!!
     zmin = np.absolute(group.G2depth-10.).argmin()
@@ -86,41 +88,43 @@ for n, group in gdap_s:
     mldind = group[zmin:].index[group.G2sigma0[zmin:]>=mld_sigma] #identify MLD 
     if len(mldind):
         group['MLD_sigma0'] = group.G2depth[mldind[0]]
+        
+#put groups back to original dataframe. pd.join?
 
 # +
-#pH from LIPHR --> need wrapper, and run co2sys
+#pH from LIPHR --> need wrapper
+# calculate LIPHR pH at Glodap points below 1480 m and above 2020m
+Coordinates = [gdap.G2longitude gdap.G2latitude, gdap.G2pressure]
+Measurements = [gdap.G2salinity, gdap.G2temperature, gdap.G2nitrate, gdap.G2oxygen]
+MeasIDVec = [1, 7, 3, 6]
 
-#matlab code
-#%% calculate LIPHR pH at Glodap points below 1480 m and above 2020m
-#
-#Coordinates = [gdap_SO.G2longitude gdap_SO.G2latitude, gdap_SO.G2pressure];
-#
-#Measurements = [gdap_SO.G2salinity, gdap_SO.G2temperature, gdap_SO.G2nitrate, gdap_SO.G2oxygen];
-#    
-#MeasIDVec = [1 7 3 6];
-#
-#[pHEstimates,UncertaintyEstimates,MinUncertaintyEquation]= ...
-#    LIPHR(Coordinates,Measurements,MeasIDVec, 'OAAdjustTF', false)  ;                                  
-#
-#gdap_SO.pH_in_situ_total = pHEstimates;
-#
-#gdap_SO.pH_in_situ_total(isnan(gdap_SO.G2phts25p0))=nan;
+pHEstimates,UncertaintyEstimates,MinUncertaintyEquation = carbon_utils.LIPHR_matlab(Coordinates,
+                                                                                    Measurements,
+                                                                                    MeasIDVec, 
+                                                                                    OAAdjustTF = False)                                  
 
-# gdap pH 25C - NEED TO UPDATE INPUTS HERE
+gdap['pH_in_situ_total'] = pHEstimates
+gdap.pH_in_situ_total[np.isnan(gdap.G2phts25p0)] = np.nan
+
+# -
+
+# gdap pH 25C - NEED TO UPDATE INPUTS HERE for SOCCOM version-> see Nancy's note in Slack
 results = pyco2.sys(
-    par1=SD['TA_Lee'], 
-    par2=SD['pCO2 SW (sat) uatm'],
+    par1=2300., 
+    par2=gdap.PH_IN_SITU_TOTAL_ADJUSTED,
     par1_type=1,
-    par2_type=4,
-    # Don't need to specify output conditions if same
-    temperature=SD['SST (C)'], 
-    pressure=0, 
-    salinity=SD['Salinity'], 
+    par2_type=3,
+    temperature=gdap.TEMP_ADJUSTED, 
+    pressure=gdap.PRES_ADJUSTED, 
+    salinity=gdap.PSAL_ADJUSTED, 
+    temperature_out=25., #fixed 25C temperature
+    pressure_out=gdap.PRES_ADJUSTED,
     opt_k_carbonic=10,
     opt_k_bisulfate=1, # this is the default
     opt_k_fluoride=1, # this is the default
     buffers_mode='auto',
 )
+#not sure what's happening here with constant inputs?
 #[DATA,~,~]=CO2SYSSOCCOM_smb(2300.*ones(length(gdap_SO.TEMP_ADJUSTED),1), gdap_SO.PH_IN_SITU_TOTAL_ADJUSTED, ...
 #    1,3, gdap_SO.PSAL_ADJUSTED, gdap_SO.TEMP_ADJUSTED, 25.*ones(length(gdap_SO.TEMP_ADJUSTED),1),...
 #    gdap_SO.PRES_ADJUSTED, gdap_SO.PRES_ADJUSTED, zeros(length(gdap_SO.TEMP_ADJUSTED),1), zeros(length(gdap_SO.TEMP_ADJUSTED),1),1,10,3);
@@ -128,14 +132,15 @@ results = pyco2.sys(
 #
 #set pH to nan where there was no original pH data from GLODAP
 #gdap_SO.pH_25C_TOTAL(isnan(gdap_SO.G2phts25p0))=nan;
+
+# +
+# change Glodap names to Argo names
+#name_convert = {'G2longitude' 'LONGITUDE'; 'G2latitude', 'LATITUDE'; 'G2pressure', 'PRES_ADJUSTED'; 'G2temperature', 'TEMP_ADJUSTED'; 'G2salinity', 'PSAL_ADJUSTED';...
+#   'G2oxygen' 'DOXY_ADJUSTED'; 'G2nitrate' 'NITRATE_ADJUSTED';'G2tco2' 'DIC' ; 'G2talk' 'TALK_LIAR' ; 'G2MLD' 'MLD'; 'G2o2sat' 'o2sat' ; 'G2PTMP' 'PTMP';'pH_in_situ_total' 'PH_IN_SITU_TOTAL_ADJUSTED'};
 # -
 
-#%% change Glodap names to Argo names
-#name_convert = {'G2longitude' 'LONGITUDE'; 'G2latitude', 'LATITUDE'; 'G2pressure', 'PRES_ADJUSTED'; 'G2temperature', 'TEMP_ADJUSTED'; 'G2salinity', 'PSAL_ADJUSTED';...
-#    'G2oxygen' 'DOXY_ADJUSTED'; 'G2nitrate' 'NITRATE_ADJUSTED';'G2tco2' 'DIC' ; 'G2talk' 'TALK_LIAR' ; 'G2MLD' 'MLD'; 'G2o2sat' 'o2sat' ; 'G2PTMP' 'PTMP';'pH_in_situ_total' 'PH_IN_SITU_TOTAL_ADJUSTED'};
 
-
-# Apply float bias corrections
+# Apply float bias corrections - this is the meaty part
 
 
 
