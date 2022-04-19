@@ -16,4 +16,4 @@ dependencies:
   - jupytext
   - pip
   - pip:
-    - PyCO2SYS
+    - PyCO2SYS 
