@@ -55,10 +55,14 @@ def LIAR_matlab(LIAR_path,Coordinates,Measurements, MeasIDVec,VerboseTF=False):
     eng = matlab.engine.start_matlab()
 
     #convert inputs to MATLAB double
-    Measurements = matlab.double(Measurements)
-    Coordinates = matlab.double(OutputCoordinates.tolist())
-    MeasIDVec = matlab.double(MeasIDVec)
+    Measurements = matlab.double([Measurements])
+    Coordinates = matlab.double([Coordinates])
+    MeasIDVec = matlab.double([MeasIDVec])
 
+    #squeeze
+    Measurements = eng.squeeze(Measurements)
+    Coordinates = eng.squeeze(Coordinates)
+    
     #need to make sure LIAR subfolders added to matlab path
     eng.addpath(eng.genpath(LIAR_path))
 

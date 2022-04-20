@@ -42,10 +42,12 @@ import gsw
 import float_data_processing as fl
 import carbon_utils
 
-# User input: set paths for MATLAB LIAR/LIPHR (on local computer!)
+# ### User inputs: 
 
-matlab_dir  = '/Users/veronicatamsitt/Documents/MATLAB/'
+matlab_dir  = '/Users/veronicatamsitt/Documents/MATLAB/' #set paths for MATLAB LIAR/LIPHR (on local computer!)
 liar_dir = matlab_dir + 'LIRs-master/'
+p_interp_min = 1200 #minimum pressure for float crossover comparison
+p_interp_max = 2000 #maximum pressure for float crossover comparison
 
 # Create data directories
 
@@ -80,14 +82,12 @@ for v in flagvars:
     flag = v+'f'
     naninds = gdap[flag]!=2
     gdap[v][naninds] = np.nan
-# -
-
-#need to group by cruise and station first
-gdap_s = gdap.groupby(['G2cruise','G2station','G2cast'])
 
 # +
 ###make into separate function?
 #iterate over grouped data to calc MLD
+#need to group by cruise and station first
+gdap_s = gdap.groupby(['G2cruise','G2station','G2cast'])
 for n, group in gdap_s:
     #need to only do if not all -9999!!!
     zmin = np.absolute(group.G2depth-10.).argmin()
@@ -115,7 +115,11 @@ Measurements = np.stack((gdap.G2salinity.values.flatten(),
                          axis=1)
 MeasIDVec = [1, 7, 3, 6]
                                 
-results = carbon_utils.LIPHR_matlab(LIPHR_path,Coordinates.tolist(),Measurements.tolist(),MeasIDVec, OAAdjustTF = False)                                  
+results = carbon_utils.LIPHR_matlab(LIPHR_path,
+                                    Coordinates.tolist(),
+                                    Measurements.tolist(),
+                                    MeasIDVec, 
+                                    OAAdjustTF = False)                                  
 
 gdap['pH_in_situ_total'] = results
 gdap.pH_in_situ_total[np.isnan(gdap.G2phts25p0)] = np.nan
@@ -167,119 +171,147 @@ qc_data_fields = ['TEMP_ADJUSTED', 'PSAL_ADJUSTED', 'DOXY_ADJUSTED', 'NITRATE_AD
 #-> is this the best way? can't easily combine floats into 1 dataset unless interpolated onto same p levels, 
 #so do initial processing in loop and then combine into a single dataset once interpolated onto p levels?
 wmo_list= list()
-for n in argolist[:1]:
+for n in argolist:
     argo_n = xr.open_dataset(argo_path+n)
     argo_n = argo_n.set_coords(('PRES_ADJUSTED','LATITUDE','LONGITUDE','JULD'))
 
-    wmo_n = argo_n.PLATFORM_NUMBER
+    wmo_n = argo_n.PLATFORM_NUMBER.values.astype(int)[0]
     wmo_list.append(wmo_n)
     
+    #check first if PH_IN_SITU_TOTAL_ADJUSTED exists
+    if 'PH_IN_SITU_TOTAL_ADJUSTED' in argo_n.keys() and np.any(~np.isnan(argo_n.PH_IN_SITU_TOTAL_ADJUSTED)):
+        
+        print('doing TALK, DIC and pH bias correction for float '+str(wmo_n))
+        
+        #initialise pH 25c and DIC variables
+        argo_n['TALK_LIAR'] = (['N_PROF','N_LEVELS'],np.empty(argo_n.PRES_ADJUSTED.shape)) #nprof x nlevel
+        argo_n.TALK_LIAR[:] = np.nan
+        argo_n['pH_25C_TOTAL'] = (['N_PROF','N_LEVELS'],np.empty(argo_n.PRES_ADJUSTED.shape)) #nprof x nlevel
+        argo_n.pH_25C_TOTAL[:] = np.nan
+        argo_n['DIC'] = (['N_PROF','N_LEVELS'],np.empty(argo_n.PRES_ADJUSTED.shape)) #nprof x nlevel
+        argo_n.DIC[:] = np.nan
+        argo_n['pH_insitu_corr'] = (['N_PROF','N_LEVELS'],np.empty(argo_n.PRES_ADJUSTED.shape)) #nprof x nlevel
+        argo_n.pH_insitu_corr[:] = np.nan
+        argo_n['bias_corr'] = (['N_PROF','N_LEVELS'],np.empty(argo_n.PRES_ADJUSTED.shape)) #nprof
+        argo_n.bias_corr[:] = np.nan
     
-    #   set bad data and possibly bad data to NaN or mask? Let's try mask
-    for q in qc_data_fields:
-        qc_val = argo_n[q+'_QC'].values
-        print(qc_val)
-        argo_n[q].where(qc_val.decode()<3. and qc_val.decode()>4.)
-        #argo_n[q][badind] = np.nan
-        #badind = argo_n[q+'_QC'] == 4
-        #argo_n[q][badind] = np.nan
+        #   set bad data and possibly bad data to NaN 
+        for q in qc_data_fields:
+            qc_val = argo_n[q+'_QC'].values.astype('float')
+            argo_n[q].where(np.logical_and(qc_val<3.,qc_val>4.))
 
-    ##### Calc float TALK   
-    #set Si and PO4 inputs
-    #if nitrate, then use redfield for Si and PO4?, otherwise set to 0    
-    if 'NITRATE_ADJUSTED' in argo_n.keys():
-        SI = argo_n.NITRATE_ADJUSTED*2.5
-        SI[np.isnan(SI)] = 0
-        PO4 = argo_n.NITRATE_ADJUSTED/16
-        PO4[isnan(PO4)] = 0
-        Coordinates = np.stack((argo_n.LONGITUDE.values.flatten(), 
-                        argo_n.LATITUDE.values.flatten(), 
-                        argo_n.PRESSURE.values.flatten()),
-                        axis=1)
-        Measurements = np.stack((argo_n.PSAL_ADJUSTED.values.flatten(), 
-                         argo_n.TEMP_ADJUSTED.values.flatten(), 
-                         argo_n.NITRATE_ADJUSTED.values.flatten(), 
-                         argo_n.DOXY_ADJUSTED.values.flatten()),
-                         axis=1)
-        MeasIDVec = [1, 7, 3, 6]
+        
+        ##### Calc float TALK       
+        #repeat lats, lons to match pressure shape
+        lons_rep = np.tile(argo_n.LONGITUDE.values,(argo_n.PRES_ADJUSTED.shape[1],1)).T
+        lats_rep = np.tile(argo_n.LATITUDE.values,(argo_n.PRES_ADJUSTED.shape[1],1)).T
 
-    else:
-        SI = np.zeros((argo_n.PH_IN_SITU_TOTAL_ADJUSTED.shape()))
-        PO4 = np.zeros((argo_n.PH_IN_SITU_TOTAL_ADJUSTED.shape()))
-        Coordinates = np.stack((argo_n.LONGITUDE.values.flatten(), 
-                        argo_n.LATITUDE.values.flatten(), 
-                        argo_n.PRESSURE.values.flatten()),
-                        axis=1)
-        Measurements = np.stack((argo_n.PSAL_ADJUSTED.values.flatten(), 
-                         argo_n.TEMP_ADJUSTED.values.flatten(),
-                         argo_n.DOXY_ADJUSTED.values.flatten()),
-                         axis=1)
-        MeasIDVec = [1, 7, 6]                            
+        #set Si and PO4 inputs
+        #if nitrate, then use redfield for Si and PO4?, otherwise set to 0    
+        if 'NITRATE_ADJUSTED' in argo_n.keys():
+            SI = argo_n.NITRATE_ADJUSTED*2.5
+            SI.where(~np.isnan(SI), 0)
+            PO4 = argo_n.NITRATE_ADJUSTED/16
+            PO4.where(~np.isnan(PO4),0)
+            Coordinates = np.stack((lons_rep.flatten(), 
+                            lats_rep.flatten(), 
+                            argo_n.PRES_ADJUSTED.values.flatten()),
+                            axis=1)
+            Measurements = np.stack((argo_n.PSAL_ADJUSTED.values.flatten(), 
+                             argo_n.TEMP_ADJUSTED.values.flatten(), 
+                             argo_n.NITRATE_ADJUSTED.values.flatten(), 
+                             argo_n.DOXY_ADJUSTED.values.flatten()),
+                             axis=1)
+            MeasIDVec = [1, 7, 3, 6]
+
+        else:
+            SI = np.zeros((argo_n.PH_IN_SITU_TOTAL_ADJUSTED.shape()))
+            PO4 = np.zeros((argo_n.PH_IN_SITU_TOTAL_ADJUSTED.shape()))
+            Coordinates = np.stack((lons_rep.flatten(), 
+                            lats_rep.flatten(), 
+                            argo_n.PRES_ADJUSTED.values.flatten()),
+                            axis=1)
+            Measurements = np.stack((argo_n.PSAL_ADJUSTED.values.flatten(), 
+                             argo_n.TEMP_ADJUSTED.values.flatten(),
+                             argo_n.DOXY_ADJUSTED.values.flatten()),
+                             axis=1)
+            MeasIDVec = [1, 7, 6]                            
 
 
-    results = carbon_utils.LIAR_matlab(LIAR_path,Coordinates.tolist(),Measurements.tolist(),MeasIDVec,'VeroboseTF',False)                                  
-    print(results)
-    
-# argo_n.TALK_LIAR =   reshape(AlkalinityEstimates,size(Argo.(SNs{f}).PRES_ADJUSTED,1),size(Argo.(SNs{f}).PRES_ADJUSTED,2));
+        results = carbon_utils.LIAR_matlab(LIAR_path,
+                                           Coordinates.tolist(),
+                                           Measurements.tolist(),
+                                           MeasIDVec,
+                                           VerboseTF=False)                                  
+
+        argo_n['TALK_LIAR'] =   (['N_PROF','N_LEVELS'],np.reshape(np.asarray(results),argo_n.PH_IN_SITU_TOTAL_ADJUSTED.shape))
   
     
-    ##### Calculate float pH at 25C, DIC and apply bias corr
-    
-    #need to initialise pH 25c and DIC variables empty?
-    #is it necessary to loop through each float profile for co2sys or can we use apply_ufunc?
-    for p in range(argo_n.PRES_ADJUSTED.shape[0]):
-        # skip a profile if pH is above 10.  There seem to be pH's above 10 that causing 
-        # CO2SYS to hang up and probably not even worth considering otherwise
-        if any(argo_n.PH_IN_SITU_TOTAL_ADJUSTED[p,:]>10) or all(np.isnan(argo_n.PH_IN_SITU_TOTAL_ADJUSTED[p,:])):
-            continue
-
+        ##### Calculate float pH at 25C, DIC and apply bias corr
         results = pyco2.sys(
-            par1=argo_n.TALK_LIAR, 
-            par2=argo_n.PH_IN_SITU_TOTAL_ADJUSTED,
-            par1_type=1,
-            par2_type=3,
-            temperature=argo_n.TEMP_ADJUSTED, 
-            pressure=argo_n.PRES_ADJUSTED, 
-            salinity=argo_n.PSAL_ADJUSTED, 
-            temperature_out=25., #fixed 25C temperature
-            pressure_out=argo_n.PRES_ADJUSTED,
-            total_silicate=SI,
-            total_phosphae=PO4,
-            opt_pH_scale = 1, #total
-            opt_k_carbonic=10, #Lueker et al. 2000
-            opt_k_bisulfate=1, # Dickson 1990 (Note, matlab co2sys combines KSO4 with TB. option 3 = KSO4 of Dickson & TB of Lee 2010)
-            opt_total_borate=2, # Lee et al. 2010
-            opt_k_fluoride=2, # Perez and Fraga 1987
-            buffers_mode='auto',
+                par1=argo_n.TALK_LIAR, 
+                par2=argo_n.PH_IN_SITU_TOTAL_ADJUSTED,
+                par1_type=1,
+                par2_type=3,
+                temperature=argo_n.TEMP_ADJUSTED, 
+                pressure=argo_n.PRES_ADJUSTED, 
+                salinity=argo_n.PSAL_ADJUSTED, 
+                temperature_out=25., #fixed 25C temperature
+                pressure_out=argo_n.PRES_ADJUSTED,
+                total_silicate=SI,
+                total_phosphate=PO4,
+                opt_pH_scale = 1, #total
+                opt_k_carbonic=10, #Lueker et al. 2000
+                opt_k_bisulfate=1, # Dickson 1990 (Note, matlab co2sys combines KSO4 with TB. option 3 = KSO4 of Dickson & TB of Lee 2010)
+                opt_total_borate=2, # Lee et al. 2010
+                opt_k_fluoride=2, # Perez and Fraga 1987
+                buffers_mode='auto',
         )
            
-        argo_n.pH_25C_TOTAL[p,:] = results[:,37]
-        argo_n.DIC[p,:] = results[:,2]
-    
-        #apply pH bias correction   
-        #find if there are valid values between fixed p levels 
-        pH_p_min = 1480
-        pH_p_max = 1520
-    
-        #V- not confident I understood this correctly- if there are valid pressure levels between 1480-1520, 
-        #calc bias correction only in this depth band, if not, calc correction between 970 and 1520
-        if any(argo_n.PRES_ADJUSTED[p,:]>1480 & argo_n.PRES_ADJUSTED[p,:]<1520):
+        argo_n['pH_25C_TOTAL'] = (['N_PROF','N_LEVELS'],results['pH_total_out'])
+        argo_n['DIC'] = (['N_PROF','N_LEVELS'],results['dic'])  
         
-            inds = argo_n.PRES_ADJUSTED[p,:]>1480 & argo_n.PRES_ADJUSTED[p,:]<1520
-            correction = -0.034529*argo_n.pH_25C_TOTAL[inds]+0.26709
+        #is it necessary to loop through each float profile for co2sys or can we use apply_ufunc instead?
+        for p in range(argo_n.PRES_ADJUSTED.shape[0]):
+            # skip a profile if pH is above 10.  There seem to be pH's above 10 that causing 
+            #if any(argo_n.PH_IN_SITU_TOTAL_ADJUSTED[p,:]>10) or all(np.isnan(argo_n.PH_IN_SITU_TOTAL_ADJUSTED[p,:])):
+            #    continue
+    
+            #apply pH bias correction   
+            #find if there are valid values between fixed p levels 
+            pH_p_min = 1480
+            pH_p_max = 1520
+    
+            #V- not 100% confident I understood this correctly- if there are valid pressure levels between 1480-1520 db, 
+            #calc bias correction only in this depth band, if not, calc correction between 970 and 1520
+            if any(argo_n.PRES_ADJUSTED[p,:]>1480 & argo_n.PRES_ADJUSTED[p,:]<1520):
+        
+                inds = argo_n.PRES_ADJUSTED[p,:]>1480 & argo_n.PRES_ADJUSTED[p,:]<1520
+                correction = -0.034529*argo_n.pH_25C_TOTAL[inds]+0.26709
                               
-        else:
-            inds = argo_n.PRES_ADJUSTED[p,:]>970 & argo_n.PRES_ADJUSTED[p,:]<1520
-            correction = -0.034529*argo_n.pH_25C_TOTAL[inds]+0.26709
+            else:
+                inds = argo_n.PRES_ADJUSTED[p,:]>970 & argo_n.PRES_ADJUSTED[p,:]<1520
+                correction = -0.034529*argo_n.pH_25C_TOTAL[inds]+0.26709
                               
-        if len(correction):
-            argo_n.bias_corr[p] = np.nanmean(correction)
-            argo_n.pH_insitu_corr[p,:] = argo_n.PH_IN_SITU_TOTAL_ADJUSTED[p,:]+argo_n.bias_corr[p]
+            if len(correction):
+                argo_n.bias_corr[p] = np.nanmean(correction)
+                argo_n.pH_insitu_corr[p,:] = argo_n.PH_IN_SITU_TOTAL_ADJUSTED[p,:]+argo_n.bias_corr[p]
+    
+    #now interpolate to 1db pressure levels for crossover comparison
+    #pressure levels to interpolate to, every 1db
+    p_interp = np.arange(p_interp_min,p_interp_max+1) 
+    
+
+    
+    #for each profile get pressure values(indices) >100db
+    #if only 1 value of pressure, continue loop
+    #for comparison vars make sure at least one datapoint for p>100db
+    #if there are non-unique pressure values, then grab only unique pressure values and matching data points
+    #interpolate 1d onto p_interp levels (non-NaN data as input only)
+    #calc potential density on interpolated p and T (gsw_pdens)
+    
+    #at this point, can merge float interpolated data to one Dataset all with same p levels and exit mega loop?
 # -
-
-#
-
-
 
 # ## 4. Compare float/GLODAP crossovers
 
@@ -292,12 +324,21 @@ var_list = ['TEMP_ADJUSTED', 'PSAL_ADJUSTED', 'DOXY_ADJUSTED', 'NITRATE_ADJUSTED
 #crossover distance range
 dist = 50.
 
-#pressure levels to interpolate to, every 1db
-p_interp = np.arange(1200,2001) 
+
 
 
 
 #loop through floats to find crossovers
+
+#find which crossover variables exist in main float file
+for var in var_list:
+    if var in argo_n.keys() and any(~np.isnan(argo_n[var])):
+        var_list_n.append(var)
+    
+if len(var_list_n)<4:
+    print('No non-NAN bgc adjusted data for: '+wmo_n)
+    continue
+
 #fl.float_float_crossovers(floatn,varlist,dist,p_interp)
 # -
 
