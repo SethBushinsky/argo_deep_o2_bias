@@ -17,12 +17,13 @@
 
 # Authors: Veronica Tamsitt (USF) ...
 #
-# Adapted from MALTAB code written by Seth Bushinsky (UH)
+# Adapted from MATLAB code written by Seth Bushinsky (UH)
 #
-# 1. Download GLODAP data 
-# 2. process data
+# 1. Download and process GLODAP data
 # 3. apply float bias corrections and calculate derivative variables (pH, TALK)
-# 4. do float/glodap crossover matchups
+# 3. do float/glodap crossover matchups
+
+# import modules
 
 import numpy as np
 import glob, os
@@ -30,8 +31,7 @@ from pathlib import Path
 from datetime import datetime, date, time
 import pandas as pd
 import xarray as xr
-from scipy import stats
-from scipy import signal
+from scipy import interpolate
 import matplotlib.pyplot as plt
 import matplotlib.path as mpath
 from matplotlib import colorbar, colors
@@ -41,13 +41,6 @@ import PyCO2SYS as pyco2
 import gsw
 import float_data_processing as fl
 import carbon_utils
-
-# ### User inputs: 
-
-matlab_dir  = '/Users/veronicatamsitt/Documents/MATLAB/' #set paths for MATLAB LIAR/LIPHR (on local computer!)
-liar_dir = matlab_dir + 'LIRs-master/'
-p_interp_min = 1200 #minimum pressure for float crossover comparison
-p_interp_max = 2000 #maximum pressure for float crossover comparison
 
 # Create data directories
 
@@ -63,12 +56,33 @@ if not os.path.isdir('data'):
     os.mkdir('data')
 # -
 
-# ## 1. Download GLODAP data
+# ### User inputs: 
+
+# +
+#User local directories
+argo_path = data_dir+'Sprof/' #USER LOCAL ARGO PATH !!!!! NOTE assumes user has Sprof files downloaded from Dropbox
+#for now load fixed argo snapshot pre-downloaded Sprof files to make sure no updated QC 
+#will add optionality to re-download updated/more recent Argo Sprof
+
+matlab_dir  = '/Users/veronicatamsitt/Documents/MATLAB/' #set paths for MATLAB LIAR/LIPHR (on local computer!)
+liar_dir = matlab_dir + 'LIRs-master/'
+
+p_interp_min = 1200 #minimum pressure for float crossover comparison
+p_interp_max = 2000 #maximum pressure for float crossover comparison
+#pressure levels to interpolate to, every 1db
+p_interp = np.arange(p_interp_min,p_interp_max+1)
+
+#float QC data fields
+qc_data_fields = ['TEMP_ADJUSTED', 'PSAL_ADJUSTED', 'DOXY_ADJUSTED', 'NITRATE_ADJUSTED',  'PRES_ADJUSTED']
+
+#variables to do crossover plots
+var_list = ['TEMP_ADJUSTED', 'PSAL_ADJUSTED', 'DOXY_ADJUSTED', 'NITRATE_ADJUSTED', 
+            'pH_25C_TOTAL', 'PDENS', 'PRES_ADJUSTED', 'DIC']
+# -
+
+# ## 1. Download and process GLODAP data
 
 gdap = fl.get_glodap(data_dir, year = 2021)
-
-# ## 2. Data processing
-
 gdap.G2longitude[gdap.G2longitude < 0.] = gdap.G2longitude[gdap.G2longitude < 0.] + 360.
 
 
@@ -155,21 +169,14 @@ gdap.pH_25C_TOTAL = results['pH_total_out']
 gdap.pH_25C_TOTAL[np.isnan(gdap.G2phts25p0)]=np.nan
 # -
 
-# ## 3. Apply float bias corrections 
+# ## 2. Apply float bias corrections 
 
 # +
-##for now load fixed argo snapshot pre-downloaded Sprof files to make sure no updated QC 
-#will add optionality to re-download updated/more recent Argo Sprof
-#!!!!! NOTE assumes user has Sprof file downloaded from shared Dropbox
-argo_path = data_dir+'Sprof/' #USER LOCAL ARGO PATH
 argolist = os.listdir(argo_path)
 LIAR_path = liar_dir
 
-qc_data_fields = ['TEMP_ADJUSTED', 'PSAL_ADJUSTED', 'DOXY_ADJUSTED', 'NITRATE_ADJUSTED',  'PRES_ADJUSTED']
-
 #iterate through each float file 
-#-> is this the best way? can't easily combine floats into 1 dataset unless interpolated onto same p levels, 
-#so do initial processing in loop and then combine into a single dataset once interpolated onto p levels?
+count = 0
 wmo_list= list()
 for n in argolist:
     argo_n = xr.open_dataset(argo_path+n)
@@ -178,28 +185,41 @@ for n in argolist:
     wmo_n = argo_n.PLATFORM_NUMBER.values.astype(int)[0]
     wmo_list.append(wmo_n)
     
+    nprof_n = argo_n.dims['N_PROF']
+    
+    #   set bad data and possibly bad data to NaN 
+    for q in qc_data_fields:
+        if q in argo_n.keys():
+            qc_val = argo_n[q+'_QC'].values.astype('float')
+            argo_n[q].where(np.logical_and(qc_val<3.,qc_val>4.))
+            
+    #initialise pH 25c and DIC variables
+    argo_n['TALK_LIAR'] = (['N_PROF','N_LEVELS'],np.empty(argo_n.PRES_ADJUSTED.shape)) #nprof x nlevel
+    argo_n.TALK_LIAR[:] = np.nan
+    argo_n['pH_25C_TOTAL'] = (['N_PROF','N_LEVELS'],np.empty(argo_n.PRES_ADJUSTED.shape)) #nprof x nlevel
+    argo_n.pH_25C_TOTAL[:] = np.nan
+    argo_n['DIC'] = (['N_PROF','N_LEVELS'],np.empty(argo_n.PRES_ADJUSTED.shape)) #nprof x nlevel
+    argo_n.DIC[:] = np.nan
+    argo_n['pH_insitu_corr'] = (['N_PROF','N_LEVELS'],np.empty(argo_n.PRES_ADJUSTED.shape)) #nprof x nlevel
+    argo_n.pH_insitu_corr[:] = np.nan
+    argo_n['bias_corr'] = (['N_PROF','N_LEVELS'],np.empty(argo_n.PRES_ADJUSTED.shape)) #nprof
+    argo_n.bias_corr[:] = np.nan
+    
+    #initialise interpolated dataset
+    nan_interp = np.empty((nprof_n,p_interp.shape[0]))
+    nan_interp[:] = np.nan
+    argo_interp_n = xr.Dataset()
+    argo_interp_n['wmo'] = (['N_PROF'],np.repeat(wmo_n,nprof_n))
+    #add lat -lons to Dataset
+    argo_interp_n['LATITUDE']  = (['N_PROF'],argo_n.LATITUDE)
+    argo_interp_n['LONGITUDE']  = (['N_PROF'],argo_n.LONGITUDE)
+    for var in var_list:
+        argo_interp_n[var] = (['N_PROF','N_LEVELS'],nan_interp)
+    
     #check first if PH_IN_SITU_TOTAL_ADJUSTED exists
     if 'PH_IN_SITU_TOTAL_ADJUSTED' in argo_n.keys() and np.any(~np.isnan(argo_n.PH_IN_SITU_TOTAL_ADJUSTED)):
         
         print('doing TALK, DIC and pH bias correction for float '+str(wmo_n))
-        
-        #initialise pH 25c and DIC variables
-        argo_n['TALK_LIAR'] = (['N_PROF','N_LEVELS'],np.empty(argo_n.PRES_ADJUSTED.shape)) #nprof x nlevel
-        argo_n.TALK_LIAR[:] = np.nan
-        argo_n['pH_25C_TOTAL'] = (['N_PROF','N_LEVELS'],np.empty(argo_n.PRES_ADJUSTED.shape)) #nprof x nlevel
-        argo_n.pH_25C_TOTAL[:] = np.nan
-        argo_n['DIC'] = (['N_PROF','N_LEVELS'],np.empty(argo_n.PRES_ADJUSTED.shape)) #nprof x nlevel
-        argo_n.DIC[:] = np.nan
-        argo_n['pH_insitu_corr'] = (['N_PROF','N_LEVELS'],np.empty(argo_n.PRES_ADJUSTED.shape)) #nprof x nlevel
-        argo_n.pH_insitu_corr[:] = np.nan
-        argo_n['bias_corr'] = (['N_PROF','N_LEVELS'],np.empty(argo_n.PRES_ADJUSTED.shape)) #nprof
-        argo_n.bias_corr[:] = np.nan
-    
-        #   set bad data and possibly bad data to NaN 
-        for q in qc_data_fields:
-            qc_val = argo_n[q+'_QC'].values.astype('float')
-            argo_n[q].where(np.logical_and(qc_val<3.,qc_val>4.))
-
         
         ##### Calc float TALK       
         #repeat lats, lons to match pressure shape
@@ -225,8 +245,8 @@ for n in argolist:
             MeasIDVec = [1, 7, 3, 6]
 
         else:
-            SI = np.zeros((argo_n.PH_IN_SITU_TOTAL_ADJUSTED.shape()))
-            PO4 = np.zeros((argo_n.PH_IN_SITU_TOTAL_ADJUSTED.shape()))
+            SI = np.zeros((argo_n.PH_IN_SITU_TOTAL_ADJUSTED.shape))
+            PO4 = np.zeros((argo_n.PH_IN_SITU_TOTAL_ADJUSTED.shape))
             Coordinates = np.stack((lons_rep.flatten(), 
                             lats_rep.flatten(), 
                             argo_n.PRES_ADJUSTED.values.flatten()),
@@ -244,7 +264,8 @@ for n in argolist:
                                            MeasIDVec,
                                            VerboseTF=False)                                  
 
-        argo_n['TALK_LIAR'] =   (['N_PROF','N_LEVELS'],np.reshape(np.asarray(results),argo_n.PH_IN_SITU_TOTAL_ADJUSTED.shape))
+        argo_n['TALK_LIAR'] = (['N_PROF','N_LEVELS'],
+                               np.reshape(np.asarray(results),argo_n.PH_IN_SITU_TOTAL_ADJUSTED.shape))
   
     
         ##### Calculate float pH at 25C, DIC and apply bias corr
@@ -272,7 +293,7 @@ for n in argolist:
         argo_n['DIC'] = (['N_PROF','N_LEVELS'],results['dic'])  
         
         #is it necessary to loop through each float profile for co2sys or can we use apply_ufunc instead?
-        for p in range(argo_n.PRES_ADJUSTED.shape[0]):
+        for p in range(nprof_n):
             # skip a profile if pH is above 10.  There seem to be pH's above 10 that causing 
             #if any(argo_n.PH_IN_SITU_TOTAL_ADJUSTED[p,:]>10) or all(np.isnan(argo_n.PH_IN_SITU_TOTAL_ADJUSTED[p,:])):
             #    continue
@@ -284,60 +305,100 @@ for n in argolist:
     
             #V- not 100% confident I understood this correctly- if there are valid pressure levels between 1480-1520 db, 
             #calc bias correction only in this depth band, if not, calc correction between 970 and 1520
-            if any(argo_n.PRES_ADJUSTED[p,:]>1480 & argo_n.PRES_ADJUSTED[p,:]<1520):
+            if any((argo_n.PRES_ADJUSTED[p,:]>1480) & (argo_n.PRES_ADJUSTED[p,:]<1520)):
         
-                inds = argo_n.PRES_ADJUSTED[p,:]>1480 & argo_n.PRES_ADJUSTED[p,:]<1520
-                correction = -0.034529*argo_n.pH_25C_TOTAL[inds]+0.26709
+                inds = (argo_n.PRES_ADJUSTED[p,:]>1480) & (argo_n.PRES_ADJUSTED[p,:]<1520)
+                correction = -0.034529*argo_n.pH_25C_TOTAL[p,inds]+0.26709
                               
             else:
-                inds = argo_n.PRES_ADJUSTED[p,:]>970 & argo_n.PRES_ADJUSTED[p,:]<1520
-                correction = -0.034529*argo_n.pH_25C_TOTAL[inds]+0.26709
+                inds = (argo_n.PRES_ADJUSTED[p,:]>970) & (argo_n.PRES_ADJUSTED[p,:]<1520)
+                correction = -0.034529*argo_n.pH_25C_TOTAL[p,inds]+0.26709
                               
             if len(correction):
                 argo_n.bias_corr[p] = np.nanmean(correction)
                 argo_n.pH_insitu_corr[p,:] = argo_n.PH_IN_SITU_TOTAL_ADJUSTED[p,:]+argo_n.bias_corr[p]
     
-    #now interpolate to 1db pressure levels for crossover comparison
-    #pressure levels to interpolate to, every 1db
-    p_interp = np.arange(p_interp_min,p_interp_max+1) 
     
-
+    ##### now interpolate data for comparison
+    for p in range(nprof_n):    
+ 
+        #does it make sense to create a new xarray dataset for each wmo here?  
+        p_prof = argo_n.PRES_ADJUSTED[p,:]
     
-    #for each profile get pressure values(indices) >100db
-    #if only 1 value of pressure, continue loop
-    #for comparison vars make sure at least one datapoint for p>100db
-    #if there are non-unique pressure values, then grab only unique pressure values and matching data points
-    #interpolate 1d onto p_interp levels (non-NaN data as input only)
-    #calc potential density on interpolated p and T (gsw_pdens)
-    
+        #for each profile get pressure values >100db
+        p100 = p_prof[p_prof>100.]
+        
+        #if only 1 value of pressure or if there is not valid profile data down to p-max, continue loop
+        if (len(p100) <= 1) or (np.nanmax(p100)<p_interp_max):
+            continue
+      
+        #find which crossover variables exist in main float file
+        var_list_n = []
+        for var in var_list:
+            if (var in argo_n.keys()) and (np.any(~np.isnan(argo_n[var]))):
+                var_list_n.append(var)
+        
+        for var in var_list_n:
+            var100 = argo_n[var][p,p_prof>100.]
+        
+            #if there are non-unique pressure values, then grab only unique pressure values and matching data points
+            if len(p100)>len(np.unique(p100)):
+                p100,unique_inds = np.unique(p100, return_index=True)
+                var100 = var100[unique_inds]
+            
+            #interpolate 1d profile data onto p_interp levels 
+            #(non-NaN data as input only, and need valid var data to p_interp_max)
+            if any(~np.isnan(var100)) and ((np.nanmin(p100[~np.isnan(var100)])<p_interp_min) and (np.nanmax(p100[~np.isnan(var100)])>p_interp_max)):
+                print(np.nanmin(p100[~np.isnan(var100)]))
+                f = interpolate.interp1d(p100[~np.isnan(var100)],var100[~np.isnan(var100)])
+                var_interp_p = f(p_interp)
+        
+                #assign interpolated variables to array - is append to a dict easiest here? or concat?
+                argo_interp_n[var][p,:] = var_interp_p
+        
+        #calc potential density on interpolated p and T 
+        SA = gsw.SA_from_SP(argo_interp_n.PSAL_ADJUSTED[p,:],
+                            p_interp,
+                            argo_interp_n.LONGITUDE[p],
+                            argo_interp_n.LATITUDE[p])
+        CT = gsw.CT_from_t(SA,
+                           argo_interp_n.TEMP_ADJUSTED[p,:],
+                           p_interp)
+        argo_interp_n['PDENS'][p,:] = gsw.sigma0(SA,CT)
+        
     #at this point, can merge float interpolated data to one Dataset all with same p levels and exit mega loop?
+    #how to do this: one mega array for each var that is size (nfloat*nprof) x n_levels, 
+    #with wmo_n as an array that is size (nfloat*nprof), then can groupby wmo
+    if count == 0:
+        argo_interp = argo_interp_n
+    else:
+        argo_interp = xr.concat([argo_interp,argo_interp_n],'N_PROF')
+    
+    count = count + 1
+
+
 # -
 
-# ## 4. Compare float/GLODAP crossovers
+# ## 3. Compare float/GLODAP crossovers
 
 # +
+
+    
 #make this into a separate script and call data processing from within? Can input all user variables at the top?
-#variables to do crossover plots
-var_list = ['TEMP_ADJUSTED', 'PSAL_ADJUSTED', 'DOXY_ADJUSTED', 'NITRATE_ADJUSTED', 
-            'pH_25C_TOTAL', 'PDENS', 'PRES_ADJUSTED', 'DIC']
+
 
 #crossover distance range
 dist = 50.
 
 
-
+if len(var_list_n)<4:
+    print('No non-NAN bgc adjusted data for: '+wmo_n)
+    continue
 
 
 #loop through floats to find crossovers
 
-#find which crossover variables exist in main float file
-for var in var_list:
-    if var in argo_n.keys() and any(~np.isnan(argo_n[var])):
-        var_list_n.append(var)
-    
-if len(var_list_n)<4:
-    print('No non-NAN bgc adjusted data for: '+wmo_n)
-    continue
+
 
 #fl.float_float_crossovers(floatn,varlist,dist,p_interp)
 # -
