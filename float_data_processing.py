@@ -21,6 +21,7 @@ import pandas as pd
 import xarray as xr
 import gsw
 import ftplib
+import getpass
 
 
 def get_glodap(save_dir, year=2021):
@@ -39,35 +40,52 @@ def get_glodap(save_dir, year=2021):
     
     return gdap
 
-# +
-#def get_argo_bgc_sprof(variables,data_dir,save_dir):
-#data_dir = './data/'
-#variables = ['NO3','O2','pH']
 
-##get float lists -> eventually want to phase out to get float list directly from DACs, not rely on these saved .csv files
-##actually is there a way to do this with Python that never involves needing a list/metadata list? 
-##Can we use xarray to make dataset of all floats from ftp then only read in ones with pH/NO3/O2? or use argopy?
-#if 'NO3' in variables:
-#    filelist = 'Ocean_Ops_NO3_list2.csv'
-#    NO3_wmo = pd.read_csv(data_dir+filelist)['REF'].astype('string')
-#if 'O2' in variables:
-#    filelist = 'Ocean_Ops_O2_list2.csv'
-#   O2_wmo = pd.read_csv(data_dir+filelist)['REF'].astype('string')
-#
-#if 'pH' in variables:
-#    filelist = 'Ocean_Ops_pH_list2.csv'
-#    pH_wmo = pd.read_csv(data_dir+filelist)['REF'].astype('string')
+#argo ftp download
+def get_argo(save_dir, wmo_list):
+    IP = 'ftp.ifremer.fr'
+    filepath = './ifremer/argo/dac/'
 
-#wmo_all = np.intersect1d(NO3_wmo,np.intersect1d(O2_wmo,pH_wmo))
+    ftp = ftplib.FTP(IP,user='anonymous')
+    ftp.cwd(filepath)
+    daclist = ftp.nlst()
+    for dac in daclist:
+        ftp.cwd(dac+'/')
+        wmos = ftp.nlst() #get list of wmos
+        print(wmos)
+        #for w in wmos:
+        #    if 
+        ftp.cwd('..')
 
-#metadata file to get filepaths- is this needed or can we search the ftp file list for matches for each wmo?
-#metafn = 'ar_index_global_meta.txt'
-#meta = pd.read_csv(data_dir+metafn,header=8)
+    ftp.quit()
 
-#file_dir = 'ftp://ftp.ifremer.fr/ifremer/argo/dac/' + partial_dir + wmo + '_Sprof.nc'
 
 # +
-#def float_float_crossovers():
+def float_float_crossovers(floatn,test_floats,varlist,dist,p_interp):
+
+    #find any other float profile that crosses this float and save the float in the
+    #match list, along with the profiles that fall within the lat and lon test
+    
+    #ignore any profiles with <4 data points
+
+    #  Find lat-lon limits within dist of float location
+    lat_tol = dist/ 111.6 
+    lon_tol = dist/ (111.6*np.cosd(np.nanmean(floatn.LATITUDE)))  
+
+    last = 1 #why this?
+
+    #set lat/lon crossover limits
+    lat_min = floatn.LATITUDE-lat_tol
+    lat_max = floatn.LATITUDE+lat_tol
+    lon_min = floatn.LONGITUDE-lon_tol
+    lon_max = floatn.LONGITUDE+lon_tol
+
+    #for each float (og float), compare with all other floats (test floats)
+    #in lat/lon range of each og float profile, find 
+    #1) other og float profiles in this range and 
+    #2) test float profiles in this range
+
+# for each of the matched profiles from the main float
 
 # +
 #def float_glodap_crossovers():
