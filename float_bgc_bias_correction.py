@@ -21,7 +21,8 @@
 #
 # 1. Download and process GLODAP data
 # 3. apply float bias corrections and calculate derivative variables (pH, TALK)
-# 3. do float/glodap crossover matchups
+# 3. do float - glodap crossover comparison
+# 4. do float - float crossover comparison
 
 # import modules
 
@@ -63,15 +64,18 @@ if not os.path.isdir('data'):
 argo_path = data_dir+'Sprof/' #USER LOCAL ARGO PATH !!!!! NOTE assumes user has Sprof files downloaded from Dropbox
 #for now load fixed argo snapshot pre-downloaded Sprof files to make sure no updated QC 
 #will add optionality to re-download updated/more recent Argo Sprof
-
 matlab_dir  = '/Users/veronicatamsitt/Documents/MATLAB/' #set paths for MATLAB LIAR/LIPHR (on local computer!)
 liar_dir = matlab_dir + 'LIRs-master/'
 
+#pressure limits for interpolation
 p_interp_min = 1200 #minimum pressure for float crossover comparison
 p_interp_max = 2000 #maximum pressure for float crossover comparison
 #pressure levels to interpolate to, every 1db
 p_interp = np.arange(p_interp_min,p_interp_max+1)
 
+#pressure limits for crossover comparison
+p_compare_min = 1500
+p_compare_max = 2000
 
 #crossover distance range
 dist = 50.
@@ -169,7 +173,10 @@ gdap.pH_25C_TOTAL[np.isnan(gdap.G2phts25p0)]=np.nan
 # ## 2. Apply float bias corrections 
 
 # +
-argolist = os.listdir(argo_path)
+argolist = []
+for file in os.listdir(argo_path):
+    if file.endswith('.nc'):
+        argolist.append(file)
 LIAR_path = liar_dir
 
 #float QC data fields
@@ -182,9 +189,9 @@ var_list = ['TEMP_ADJUSTED', 'PSAL_ADJUSTED', 'DOXY_ADJUSTED', 'NITRATE_ADJUSTED
 
 #####
 #iterate through each float file 
-count = 0
 wmo_list= list()
-for n in argolist:
+for count, n in enumerate(argolist):
+    print('Processing float file '+ n)
     argo_n = xr.open_dataset(argo_path+n)
     argo_n = argo_n.set_coords(('PRES_ADJUSTED','LATITUDE','LONGITUDE','JULD'))
 
@@ -327,19 +334,22 @@ for n in argolist:
                 argo_n.pH_insitu_corr[p,:] = argo_n.PH_IN_SITU_TOTAL_ADJUSTED[p,:]+argo_n.bias_corr[p]
     
     
+    ##now write float file with added variables and pH bias correction
+    argo_n.to_netcdf(str(wmo_n)+'_adjusted.nc',engine='scipy')
+    
     ##### now interpolate data for comparison
     for p in range(nprof_n):    
- 
-        #does it make sense to create a new xarray dataset for each wmo here?  
+        
+        #pressure for profile
         p_prof = argo_n.PRES_ADJUSTED[p,:]
     
         #for each profile get pressure values >100db
         p100 = p_prof[p_prof>100.]
-        
+            
         #if only 1 value of pressure or if there is not valid profile data down to p-max, continue loop
         if (len(p100) <= 1) or (np.nanmax(p100)<p_interp_max):
             continue
-      
+        
         #find which crossover variables exist in main float file
         var_list_n = []
         for var in var_list:
@@ -348,17 +358,22 @@ for n in argolist:
                 
         argo_interp['num_var'][p] = len(var_list_n)
         
-        for var in var_list_n:
+        for var in var_list_n:         
             var100 = argo_n[var][p,p_prof>100.]
         
-            #if there are non-unique pressure values, then grab only unique pressure values and matching data points
+            #if there are non-unique pressure values, 
+            #then grab only unique pressure values and matching data points
             if len(p100)>len(np.unique(p100)):
-                p100,unique_inds = np.unique(p100, return_index=True)
-                var100 = var100[unique_inds]
-            
+                p100u,unique_inds = np.unique(p100, return_index=True)
+                var100u = var100[unique_inds]
+            else:
+                p100u = p100
+                var100u = var100
+                
             #interpolate 1d profile data onto p_interp levels 
             #(non-NaN data as input only, and need valid var data to p_interp_max)
-            if any(~np.isnan(var100)) and ((np.nanmin(p100[~np.isnan(var100)])<p_interp_min) and (np.nanmax(p100[~np.isnan(var100)])>p_interp_max)):
+            if any(~np.isnan(var100u)) and ((np.nanmin(p100u[~np.isnan(var100u)])<p_interp_min) and \
+                                            (np.nanmax(p100u[~np.isnan(var100u)])>p_interp_max)):
                 f = interpolate.interp1d(p100[~np.isnan(var100)],var100[~np.isnan(var100)])
                 var_interp_p = f(p_interp)
         
@@ -375,20 +390,103 @@ for n in argolist:
                            p_interp)
         argo_interp_n['PDENS'][p,:] = gsw.sigma0(SA,CT)
         
-    #at this point, can merge float interpolated data to one Dataset all with same p levels and exit mega loop?
-    #how to do this: one mega array for each var that is size (nfloat*nprof) x n_levels, 
-    #with wmo_n as an array that is size (nfloat*nprof), then can groupby wmo
+    #NEED TO SAVE ORIGINAL FLOAT DATA POINTS, NOT INTERPOLATED. 
+    #i.e. masked/nans at p levels with no data? or instead save as a list of lists that can support different sizes
+    #or save files with derived variables and read in loop via xarray for comparison?
+    #BUT we still want the interpolated version of the 'main' float to match to both gdap and test floats, 
+    #so actually does make sense to save all interpolated data just once to then do the comparison?
     if count == 0:
         argo_interp = argo_interp_n
     else:
         argo_interp = xr.concat([argo_interp,argo_interp_n],'N_PROF')
     
-    count = count + 1
 
 
 # -
 
-# ## 3. Compare float - float/GLODAP crossovers
+# ## 3. Compare float - GLODAP crossovers
+
+# +
+#float- GLODAP crossover 
+#variables to do crossover plot 
+var_list_plot = ['TEMP_ADJUSTED','DOXY_ADJUSTED','pH_25C_TOTAL','NITRATE_ADJUSTED','PDENS']
+
+#restrict glodap data to comparison pressure range
+gdap_p = gdap[(gdap.G2pressure.values>p_compare_min) & (gdap.G2pressure.values<p_compare_max)]
+
+#group by float wmo
+argo_wmo = argo_interp.groupby('wmo')
+
+#initiate offset list
+gdap_offsets = [[]]*len(var_list_plot)
+
+#iterate over each float & profile
+for wmo, group in argo_wmo:
+    #number of profiles
+    nprof = group.LATITUDE.shape[0]
+    
+     #check sufficient non-NaN data
+    if group.num_var[0]<4:
+        print('No non-NAN bgc adjusted data for: '+str(wmo))
+        continue
+    
+    #  Find lat-lon limits within dist of float location
+    lat_tol = dist/ 111.6 
+    lon_tol = dist/ (111.6*np.cos(np.deg2rad(np.nanmean(group.LATITUDE))))  
+    #set lat/lon crossover limits
+    lat_min = group.LATITUDE.values-lat_tol
+    lat_max = group.LATITUDE.values+lat_tol
+    lon_min = group.LONGITUDE.values-lon_tol
+    lon_max = group.LONGITUDE.values+lon_tol
+
+    #find all data in lat-lon limits
+    for n in range(nprof):
+        
+        #index of all gdap profiles within distance range
+        if lon_min[n] < 0:
+            match = np.logical_and(np.logical_and(gdap_p.G2latitude.values>lat_min[n],
+                                                  gdap_p.G2latitude.values<lat_max[n]),
+                                   np.logical_or(gdap_p.G2longitude.values>lon_min[n]+360,
+                                                  gdap_p.G2longitude.values<lon_max[n]))
+        elif lon_max[n] > 360:
+            match = np.logical_and(np.logical_and(gdap_p.G2latitude.values>lat_min[n],
+                                                  gdap_p.G2latitude.values<lat_max[n]),
+                                   np.logical_or(gdap_p.G2longitude.values>lon_min[n],
+                                                  gdap_p.G2longitude.values<lon_max[n]-360))
+        else:
+            match = np.logical_and(np.logical_and(gdap_p.G2latitude.values>lat_min[n],
+                                                  gdap_p.G2latitude.values<lat_max[n]),
+                                   np.logical_and(gdap_p.G2longitude.values>lon_min[n],
+                                                  gdap_p.G2longitude.values<lon_max[n]))
+        match = np.squeeze(match)
+        match_inds = np.argwhere(match)
+        
+        #get matched glodap data subset
+        if len(match_inds)==0:
+            continue
+        #get glodap data points that match
+        gdap_match = gdap_p[match]
+
+        #find index of interp profile density that most closely matches each glodap match point density
+        for m in range(len(match_inds)):
+            dens_ind = np.argmin(np.absolute(group.PDENS.values[n,:]-gdap_match.G2sigma0.values[m]))
+            
+            #don't use matches at top/bottom of interpolated vector
+            if (dens_ind == 0) or (dens_ind == len(dens_ind)-1):
+                continue
+            #calc offset at the interp profile index for each match for each var to plot 
+            #check var is present in both float and glodap
+            for idx, var in enumerate(var_list_plot):
+                if var in group.keys():
+                    offset = group[var][n,dens_ind] - gdap_match[var][m]
+                    
+                    gdap_offsets[idx].append(offset)
+
+# +
+#now plot histograms of offsets
+# -
+
+# ## 4. Compare float - float crossovers
 
 # +
 #float-float crossover
@@ -401,11 +499,11 @@ argo_wmo = argo_interp.groupby('wmo')
 #iterate over each float & profile
 for wmo, group in argo_wmo:
 
-    nprof = group.LATITUDE.shape
+    nprof = group.LATITUDE.shape[0]
     
     #check sufficient non-NaN data
     
-    if group.num_var<4:
+    if group.num_var[0]<4:
         print('No non-NAN bgc adjusted data for: '+wmo)
         continue
     
@@ -413,39 +511,37 @@ for wmo, group in argo_wmo:
     lat_tol = dist/ 111.6 
     lon_tol = dist/ (111.6*np.cos(np.deg2rad(np.nanmean(group.LATITUDE))))  
     #set lat/lon crossover limits
-    lat_min = group.LATITUDE-lat_tol
-    lat_max = group.LATITUDE+lat_tol
-    lon_min = group.LONGITUDE-lon_tol
-    lon_max = group.LONGITUDE+lon_tol
+    lat_min = group.LATITUDE.values-lat_tol
+    lat_max = group.LATITUDE.values+lat_tol
+    lon_min = group.LONGITUDE.values-lon_tol
+    lon_max = group.LONGITUDE.values+lon_tol
 
-    print(lon_min)
-    print(lon_max)
-    
     #find all profs in lat-lon limits
-    for np in nprof:
+    for n in range(nprof):
         #index of all profiles within distance range
-        ll_inds = np.argwhere(np.logical_and(np.logical_and(argo_interp.LATITUDE>lat_min[np],
-                                                            argo_interp.LATITUDE<lat_max[np]),
-                        np.logical_and(argo_interp.LONGITUDE>lon_min[np],
-                                       argo_interp.LONGITUDE<lon_max[np])))
-    
-        # get all crossover profiles (includes other profiles from main float + profiles from test float)
-        match = argo_interp[ll_inds,:]
+        match_inds = np.argwhere(np.logical_and(np.logical_and(argo_interp.LATITUDE.values>lat_min[n],
+                                                            argo_interp.LATITUDE.values<lat_max[n]),
+                            np.logical_and(argo_interp.LONGITUDE.values>lon_min[n],
+                                           argo_interp.LONGITUDE.values<lon_max[n])))
+        match_inds = np.squeeze(match_inds)
+        #get wmos of matches
     
         #### calc offset from main profile for all matching profiles
         
         #1. need to find closest density to main profile for each comparison
         #iterate through main float profile density values here? 
-        #Or instead loop through test prof to find closest density in main
-        #also need to constrain comp data pressure to set range? 
+        #MATLAB version:  loop through test prof to find closest density in main interpolated file
+        #does this way around matter/make a difference? check with Seth
         for d in group.PDENS:
-            dens_ind = np.argmin(np.absolute(argo_interp.PDENS - d))
+            dens_ind = np.argmin(np.absolute(argo_interp.PDENS[argo_interp.PDENS>p_compare_min] - d))
+        
         #2. calc offset at density level for each variable
-        for var in var_list_plot:
+        #for var in var_list_plot:
+        
+        #add offsets to larger array/list
         
         #find unique wmo's of crossover floats
         wmo_cross = np.unique(crossover.wmo)
-        
         
         
         ###### plot
@@ -466,26 +562,11 @@ for wmo, group in argo_wmo:
                 plt.legend()
         
         #plot histograms for variables
-        for n in range(num_var):
-            argo_interp[var_list_plot[n]]
-            ax[n+1].plot()
+        #two histograms: all offsets and offsets within 0.03 of target density?
+        #for n in range(num_var):
+        #    argo_interp[var_list_plot[n]]
+        #    ax[n+1].hist()
         
-        #        d(1) = subplot(2,3,1);
-        #hold on; title(SNs{q})
-        #xlabel('Lon'); ylabel('Lat');
-        #d(2) = subplot(2,3,2);
-        #hold on; title('Temp'); grid on
-        #d(3) = subplot(2,3,3);
-        #hold on; title('O2'); grid on
-        #d(4) = subplot(2,3,4);
-        #hold on; title('pH 25C'); grid on
-        #d(5) = subplot(2,3,5);
-        #hold on; title('Nitrate'); grid on
-        #d(6) = subplot(2,3,6);
-        #hold on; title('Pot. Dens'); grid on
-# +
-#float- GLODAP crossover
 # -
-
 
 
