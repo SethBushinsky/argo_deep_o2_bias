@@ -233,12 +233,13 @@ for count, n in enumerate(argolist):
     argo_interp_n = xr.Dataset()
     argo_interp_n['wmo'] = (['N_PROF'],np.repeat(wmo_n,nprof_n))
     argo_interp_n['profile'] = (['N_PROF'],argo_n.CYCLE_NUMBER) 
+    argo_interp_n['juld'] = (['N_PROF'],argo_n.JULD_LOCATION)
     #add lat -lons to Dataset
     argo_interp_n['LATITUDE']  = (['N_PROF'],argo_n.LATITUDE)
     argo_interp_n['LONGITUDE']  = (['N_PROF'],argo_n.LONGITUDE)
     argo_interp_n['num_var'] = (['N_PROF'],np.empty((nprof_n)))
-    for var in var_list:
-        argo_interp_n[var] = (['N_PROF','N_LEVELS'],nan_interp)
+    for v in var_list:
+        argo_interp_n[v] = (['N_PROF','N_LEVELS'],nan_interp)
     
     #check first if PH_IN_SITU_TOTAL_ADJUSTED exists
     if 'PH_IN_SITU_TOTAL_ADJUSTED' in argo_n.keys() and np.any(~np.isnan(argo_n.PH_IN_SITU_TOTAL_ADJUSTED)):
@@ -327,7 +328,7 @@ for count, n in enumerate(argolist):
             pH_p_min = 1480
             pH_p_max = 1520
     
-            #V- not 100% confident I understood this correctly- if there are valid pressure levels between 1480-1520 db, 
+            #if there are valid pressure levels between 1480-1520 db, 
             #calc bias correction only in this depth band, if not, calc correction between 970 and 1520
             if any((argo_n.PRES_ADJUSTED[p,:]>1480) & (argo_n.PRES_ADJUSTED[p,:]<1520)):
         
@@ -403,9 +404,6 @@ for count, n in enumerate(argolist):
                     
                     if  p100u[~np.isnan(var100u)][0]>p_interp_min:                   
                         pmin_ind = np.argwhere(p_interp>p100u[~np.isnan(var100u)][0])[0][0]
-                        print(p100u[~np.isnan(var100u)][0])
-                        print(p_interp[pmin_ind])
-                        print(p_interp[pmax_ind])
                         var_interp_p = f(p_interp[pmin_ind:pmax_ind])
                         #assign interpolated variables to array 
                         argo_interp_n[var][p,pmin_ind:pmax_ind] = var_interp_p
@@ -414,6 +412,7 @@ for count, n in enumerate(argolist):
                         var_interp_p = f(p_interp[:pmax_ind])
                         #assign interpolated variables to array 
                         argo_interp_n[var][p,:pmax_ind] = var_interp_p
+                    
                 else:
                     var_interp_p = f(p_interp)
                     #assign interpolated variables to array 
@@ -424,13 +423,15 @@ for count, n in enumerate(argolist):
                 
             else: 
                 print('profile data not deep enough to interpolate')
+            
+            del var100, var100u
                             
     #save adjusted/processed, non-interpolated data to use for crossovers
     #could instead save each comparison var as a list of lists that can support different sizes r
     #rather than write to disk?
     
     #####May 3rd: commenting for now due to_netcdf save error, glodap comparison still should work
-    #argo_n.to_netcdf(argo_path+str(wmo_n)+'_adjusted.nc',engine='scipy')
+    argo_n.to_netcdf(argo_path+str(wmo_n)+'_adjusted.nc',engine='scipy')
 
     #Also save interpolated dataset as one mega Dataset for doing crossovers
     if count == 0:
@@ -454,8 +455,10 @@ gdap_p = gdap[(gdap.PRES_ADJUSTED.values>p_compare_min) & (gdap.PRES_ADJUSTED.va
 argo_wmo = argo_interp.groupby('wmo')
 
 #initiate offset list
-gdap_offsets = [[]]*len(var_list_plot)
-wmo_offsets = []
+#number of additional rows for saving metadata items
+num_meta_items = 3
+gdap_offsets = [[]]*(2*len(var_list_plot)+num_meta_items)
+
 #iterate over each float & profile
 for wmo, group in argo_wmo:
     
@@ -515,28 +518,50 @@ for wmo, group in argo_wmo:
             #check var is present in both float and glodap
             for idx, var in enumerate(var_list_plot):
                 if var in group.keys():
-                    print(var)
                     gdap_offset_ind = gdap_match[var].index[m]
-                    print(group[var][n,dens_ind])
-                    print(gdao_match[var][gdap_offset_ind])
                     offset = group[var][n,dens_ind] - gdap_match[var][gdap_offset_ind]
                     
-                    gdap_offsets[idx].append(offset)
-                    wmo_offsets.append(wmo)
+                    #append to offset list
+                    gdap_offsets[idx*2].append(offset)
+                    
+                    #also save absoute glodap value at crossover
+                    gdap_offsets[idx*2+1].append(gdap_match[var][gdap_offset_ind])
+                    
+            #append metadata to offset list
+            gdap_offsets[len(var_list_plot)*2].append(wmo)
+            gdap_offsets[len(var_list_plot)*2+1].append(group.profile[n])
+            gdap_offsets[len(var_list_plot)*2+2].append(group.juld[n])
+            #can add additional float metadata variable to list here
+            
 # -
+
+#save GLODAP offsets list to text file
+#note: need to add header info for rows
+gdap_offsets_array = np.array(gdap_offsets)
+np.savetxt(output_dir+'gdap_offsets.txt',gdap_offsets_array)
 
 # ## 4. Compare float - float crossovers
 
-#float-float crossover
-#iterate over each *main* float & profile - should I run this in same loop as gdap? or separate?
-for wmo, group in argo_wmo:
+# +
+#float- float crossover 
+#variables to do crossover plot 
+var_list_plot = ['TEMP_ADJUSTED','DOXY_ADJUSTED','pH_25C_TOTAL_ADJUSTED','NITRATE_ADJUSTED','PDENS']
 
+
+#initiate offset list
+#number of additional rows for saving metadata items
+num_meta_items = 6
+float_offsets = [[]]*(2*len(var_list_plot)+num_meta_items)
+
+#iterate over each interpolated float & profile
+for wmo, group in argo_wmo:
+    
+    #number of profiles
     nprof = group.LATITUDE.shape[0]
     
-    #check sufficient non-NaN data
-    
+     #check sufficient non-NaN data
     if group.num_var[0]<4:
-        print('No non-NAN bgc adjusted data for: '+wmo)
+        print('No non-NAN bgc adjusted data for: '+str(wmo))
         continue
     
     #  Find lat-lon limits within dist of float location
@@ -548,32 +573,81 @@ for wmo, group in argo_wmo:
     lon_min = group.LONGITUDE.values-lon_tol
     lon_max = group.LONGITUDE.values+lon_tol
 
-    #find all profs in lat-lon limits
+    #find all data in lat-lon limits
     for n in range(nprof):
+        
         #index of all profiles within distance range
         match_inds = np.argwhere(np.logical_and(np.logical_and(argo_interp.LATITUDE.values>lat_min[n],
                                                             argo_interp.LATITUDE.values<lat_max[n]),
                             np.logical_and(argo_interp.LONGITUDE.values>lon_min[n],
                                            argo_interp.LONGITUDE.values<lon_max[n])))
         match_inds = np.squeeze(match_inds)
-        #get wmos of matches
+        
+        if len(match_inds)==0:
+            continue
+            
+        #get wmos of matched test floats
+        match_wmo = np.unique(argo_interp.wmo[match_inds])
+        
+        #now load and loop through raw float data floats/profiles for matched test floats
+        for w,p in zip(argo_interp.wmo[match_inds].values,argo_interp.profile[match_inds].values):
+            
+            #get single test profile data
+            fn = argo_path+str(w)+'_adjusted.nc'
+            test_float = xr.open_dataset(fn)
+            print(np.argwhere(test_float.CYCLE_NUMBER.values==p)[0][0])
+            prof_ind = np.argwhere(test_float.CYCLE_NUMBER.values==p)[0][0]
+            print(test_float)
+            test_profile = test_float[prof_ind,:]
+            
+
+            #find index of interp profile density that most closely matches each test profile point density
+            #only loop through valid data points
+            p_valid = ~np.isnan(test_float.PDENS[prof_ind,:])
+            test_pdens = test_float.PDENS[prof_ind,p_valid]
+            
+            for cound,pd in enumerate(test_pdens.values):
+                dens_ind = np.argmin(np.absolute(group.PDENS.values[n,:]-pd))
+            
+                #don't use matches at top/bottom of interpolated vector
+                if (dens_ind == 0) or (dens_ind == len(p_interp) -1):
+                    continue
+                #calc offset at the interp profile index for each match for each var to plot 
+                #check var is present in both float and glodap
+                for idx, var in enumerate(var_list_plot):
+                    if var in group.keys():
+                        offset_ind = test_float[var].index[count]
+                        offset = group[var][n,dens_ind] - test_float[var][prof_ind,offset_ind]
+                    
+                        #append to offset list
+                        float_offsets[idx*2].append(offset)
+                    
+                        #also save absoute test float profile value at crossover
+                        float_offsets[idx*2+1].append(test_float[var][prof_ind,offset_ind])
+                    
+                #append metadata to offset list (from main and test float)
+                float_offsets[len(var_list_plot)*2].append(wmo)
+                float_offsets[len(var_list_plot)*2].append(w)
+                float_offsets[len(var_list_plot)*2+1].append(group.profile[n])
+                float_offsets[len(var_list_plot)*2+2].append(p)
+                float_offsets[len(var_list_plot)*2+3].append(group.juld[n])
+                float_offsets[len(var_list_plot)*2+4].append(test_float.JULD_LOCATION[prof_ind])
+                #can add additional float metadata variable to list here
+            
+# -
+
+# ## Plot crossovers
+
+
+# +
+#now plot histograms of offsets
+fig,axs = plt.subplots(3,3,figsize=(12,10))
+for idx, var in enumerate(var_list_plot):
+    axs[idx].hist(gdap_offsets,color='r')
     
-        #### calc offset from main profile for all matching profiles
-        
-        #1. need to find closest density to main profile for each comparison
-        #MATLAB version:  loop through test prof to find closest density in main interpolated file
-        for d in group.PDENS:
-            dens_ind = np.argmin(np.absolute(argo_interp.PDENS[argo_interp.PDENS>p_compare_min] - d))
-        
-        #2. calc offset at density level for each variable
-        #for var in var_list_plot:
-        
-        #add offsets to larger array/list
-        
-        #find unique wmo's of crossover floats
-        wmo_cross = np.unique(crossover.wmo)
-        
-        
+    
+# -
+
         ###### plot
         fig, ax = plt.subplots(2,3,figsize=(16,12))
         # plot current float
@@ -596,14 +670,3 @@ for wmo, group in argo_wmo:
         #for n in range(num_var):
         #    argo_interp[var_list_plot[n]]
         #    ax[n+1].hist()
-        
-# ## Plot crossovers
-
-
-# +
-#now plot histograms of offsets
-fig,axs = plt.subplots(3,3,figsize=(12,10))
-for idx, var in enumerate(var_list_plot):
-    axs[idx].hist(gdap_offsets,color='r')
-    
-    
