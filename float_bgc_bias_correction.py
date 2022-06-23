@@ -6,7 +6,7 @@
 #       extension: .py
 #       format_name: light
 #       format_version: '1.5'
-#       jupytext_version: 1.11.3
+#       jupytext_version: 1.13.8
 #   kernelspec:
 #     display_name: Python 3
 #     language: python
@@ -58,17 +58,43 @@ if not os.path.isdir('output'):
     os.mkdir('output')
 if not os.path.isdir('data'):
     os.mkdir('data')
+
+# +
+# read in a user-created text file to point to local directories to avoid having to change this every time 
+# we update code
+lines=[]
+with open('path_file.txt') as f:
+    lines = f.readlines()
+    
+count = 0
+for line in lines:
+    count += 1
+    index = line.find("=")
+    #print(f'line {count}: {line}')
+    #print(index)
+    #print(line[0:index])
+    line = line.rstrip()
+    if line[0:index].find("argo")>=0:
+        argo_path=line[index+1:]
+    elif line[0:index].find("liar")>=0:
+        liar_dir=line[index+1:]
+    elif line[0:index].find("matlab")>=0:
+        matlab_dir=line[index+1:]
+    
+#print(argo_path)
+#print(liar_dir)
+#print(matlab_dir)
 # -
 
 # ### User inputs: 
 
 # +
 #User local directories
-argo_path = data_dir+'Sprof/' #USER LOCAL ARGO PATH !!!!! NOTE assumes user has Sprof files downloaded from Dropbox
+#argo_path = data_dir+'Sprof/' #USER LOCAL ARGO PATH !!!!! NOTE assumes user has Sprof files downloaded from Dropbox
 #for now load fixed argo snapshot pre-downloaded Sprof files to make sure no updated QC 
 #will add optionality to re-download updated/more recent Argo Sprof
-matlab_dir  = '/Users/veronicatamsitt/Documents/MATLAB/' #set paths for MATLAB LIAR/LIPHR (on local computer!)
-liar_dir = matlab_dir + 'LIRs-master/'
+#matlab_dir  = '/Users/veronicatamsitt/Documents/MATLAB/' #set paths for MATLAB LIAR/LIPHR (on local computer!)
+#liar_dir = matlab_dir + 'LIRs-master/'
 
 #pressure limits for interpolation
 p_interp_min = 1200 #minimum pressure for float crossover comparison
