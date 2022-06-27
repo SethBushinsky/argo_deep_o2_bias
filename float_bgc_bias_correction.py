@@ -180,7 +180,14 @@ gdap = gdap.rename(columns={'G2longitude':'LONGITUDE', 'G2latitude':'LATITUDE', 
                             'G2talk':'TALK_LIAR', 'G2MLD':'MLD','G2o2sat':'o2sat', 'G2PTMP':'PTMP', 
                             'pH_in_situ_total':'PH_IN_SITU_TOTAL_ADJUSTED','G2sigma0':'PDENS'})
 
+
 # ## 2. Apply float bias corrections 
+
+def clean_dataset(ds):
+    for var in ds.variables.values():
+        if 'chunksizes' in var.encoding:
+            del var.encoding['chunksizes']
+
 
 # +
 argolist = []
@@ -436,8 +443,9 @@ for count, n in enumerate(argolist):
     #save adjusted/processed, non-interpolated data to use for crossovers
     #could instead save each comparison var as a list of lists that can support different sizes r
     #rather than write to file?
-    #clean_dataset(argo_n)
-    argo_n.to_netcdf(argo_path+str(wmo_n)+'_adjusted.nc', engine='scipy')
+    ###NOTE: currently getting a ValueError in to_netcdf for 1 float (2903176)
+    clean_dataset(argo_n)
+    argo_n.to_netcdf(argo_path+str(wmo_n)+'_adjusted.nc', format="NETCDF4_CLASSIC")
     
     
     #Also save interpolated dataset as one mega Dataset for doing crossovers
@@ -449,12 +457,15 @@ for count, n in enumerate(argolist):
 
 # -
 
+argo_n
+
 # ## 3. Compare float - GLODAP crossovers
 
 # +
 #float- GLODAP crossover 
 #variables to do crossover plot 
-var_list_plot = ['TEMP_ADJUSTED','DOXY_ADJUSTED','pH_25C_TOTAL_ADJUSTED','NITRATE_ADJUSTED','PDENS']
+var_list_plot = ['TEMP_ADJUSTED','PSAL_ADJUSTED','DOXY_ADJUSTED','NITRATE_ADJUSTED',
+                 'DIC','pH_25C_TOTAL_ADJUSTED','PDENS']
 
 #restrict glodap data to comparison pressure range
 gdap_p = gdap[(gdap.PRES_ADJUSTED.values>p_compare_min) & (gdap.PRES_ADJUSTED.values<p_compare_max)]
@@ -537,15 +548,19 @@ for wmo, group in argo_wmo:
                     
                     #also save absoute glodap value at crossover
                     gdap_offsets[idx*2+1].append(gdap_match[var][gdap_offset_ind])
-                    
+                #append nan if variable is not there so lists all remain same length?
+                else:
+                    float_offsets[idx*2].append(np.nan)
+                    float_offsets[idx*2+1].append(np.nan)
+            
             #append metadata to offset list
-            gdap_offsets[10].append(wmo)
-            gdap_offsets[11].append(group.profile[n].values)
-            gdap_offsets[12].append(group.juld[n].values)
-            gdap_offsets[13].append(group.LONGITUDE[n].values)
-            gdap_offsets[14].append(gdap_match.LONGITUDE[gdap_match.LONGITUDE.index[0]])
-            gdap_offsets[15].append(group.LATITUDE[n].values)
-            gdap_offsets[16].append(gdap_match.LATITUDE[gdap_match.LATITUDE.index[0]])
+            gdap_offsets[len(var_list_plot)*2].append(wmo)
+            gdap_offsets[len(var_list_plot)*2+1].append(group.profile[n].values)
+            gdap_offsets[len(var_list_plot)*2+2].append(group.juld[n].values)
+            gdap_offsets[len(var_list_plot)*2+3].append(group.LONGITUDE[n].values)
+            gdap_offsets[len(var_list_plot)*2+4].append(gdap_match.LONGITUDE[gdap_match.LONGITUDE.index[0]])
+            gdap_offsets[len(var_list_plot)*2+5].append(group.LATITUDE[n].values)
+            gdap_offsets[len(var_list_plot)*2+6].append(gdap_match.LATITUDE[gdap_match.LATITUDE.index[0]])
             #can add additional float metadata variable to list here
 
 
@@ -566,7 +581,7 @@ glodap_offsets['glodap_latitude'] = (gdap_offsets[len(var_list_plot)*2+6])
 
 glodap_offsets.to_netcdf(output_dir+'glodap_offsets.nc')
 
-print('Total number of glodap crossovers: ' + str(len(gdap_offsets[10])))
+print('Total number of glodap crossovers: ' + str(len(gdap_offsets[len(var_list_plot)*2])))
 # -
 
 # ## 4. Compare float - float crossovers
@@ -574,7 +589,8 @@ print('Total number of glodap crossovers: ' + str(len(gdap_offsets[10])))
 # +
 #float- float crossover 
 #variables to do crossover plot 
-var_list_plot = ['TEMP_ADJUSTED','DOXY_ADJUSTED','pH_25C_TOTAL_ADJUSTED','NITRATE_ADJUSTED','PDENS']
+var_list_plot = ['TEMP_ADJUSTED','PSAL_ADJUSTED','DOXY_ADJUSTED','NITRATE_ADJUSTED',
+                 'DIC','pH_25C_TOTAL_ADJUSTED','PDENS']
 
 
 #initiate offset list
@@ -658,19 +674,24 @@ for wmo, group in argo_wmo:
                     
                             #also save absoute test float profile value at crossover
                             float_offsets[idx*2+1].append(test_float[var][prof_ind,i].values)
-                    
-                    #append metadata to offset list (from main and test float)
-                    float_offsets[10].append(wmo)
-                    float_offsets[11].append(w)
-                    float_offsets[12].append(group.profile[n].values)
-                    float_offsets[13].append(p)
-                    float_offsets[14].append(group.juld[n].values)
-                    float_offsets[15].append(test_float.JULD_LOCATION[prof_ind].values)
-                    float_offsets[16].append(group.LONGITUDE[n].values)
-                    float_offsets[17].append(test_float.LONGITUDE[prof_ind].values)
-                    float_offsets[18].append(group.LATITUDE[n].values)
-                    float_offsets[19].append(test_float.LATITUDE[prof_ind].values)
-                    #can add additional float metadata variable to list here
+                        
+                        #append nan if variable is not there so lists all remain same length?
+                        else:
+                            float_offsets[idx*2].append(np.nan)
+                            float_offsets[idx*2+1].append(np.nan)
+                            
+                #append metadata to offset list (from main and test float)
+                float_offsets[len(var_list_plot)*2].append(wmo)
+                float_offsets[len(var_list_plot)*2+1].append(w)
+                float_offsets[len(var_list_plot)*2+2].append(group.profile[n].values)
+                float_offsets[len(var_list_plot)*2+3].append(p)
+                float_offsets[len(var_list_plot)*2+4].append(group.juld[n].values)
+                float_offsets[len(var_list_plot)*2+5].append(test_float.JULD_LOCATION[prof_ind].values)
+                float_offsets[len(var_list_plot)*2+6].append(group.LONGITUDE[n].values)
+                float_offsets[len(var_list_plot)*2+7].append(test_float.LONGITUDE[prof_ind].values)
+                float_offsets[len(var_list_plot)*2+8].append(group.LATITUDE[n].values)
+                float_offsets[len(var_list_plot)*2+9].append(test_float.LATITUDE[prof_ind].values)
+                #can add additional float metadata variable to list here
 
 
 # +
@@ -693,7 +714,7 @@ argo_offsets['test_float_latitude'] = (float_offsets[len(var_list_plot)*2+9])
 
 argo_offsets.to_netcdf(output_dir+'float_offsets.nc')
 
-print('Total number of float crossovers: ' + str(len(float_offsets)))
+print('Total number of float crossovers: ' + str(len(float_offsets[len(var_list_plot)*2])))
 # -
 
 # ## Plot crossovers
@@ -705,9 +726,9 @@ fig = plt.figure(figsize=(12,10))
 
 for wmo, group in argo_wmo:
     #get index all glodap crossovers 
-    g_inds = gdap_offsets[len(var_list_plot)*2] == wmo
+    g_inds = np.flatnonzero(gdap_offsets[len(var_list_plot)*2] == wmo)
     #get index of all float crossovers
-    fl_inds = float_offsets[len(var_list_plot)*2] == wmo
+    fl_inds = np.flatnonzero(float_offsets[len(var_list_plot)*2] == wmo)
     
     if len(g_inds)==0 and len(fl_inds)==0:
         continue
@@ -715,53 +736,11 @@ for wmo, group in argo_wmo:
         #float crossover only
         #loop through each variable
         for idx, var in enumerate(var_list_plot):
-            if len(float_offsets[idx]):
-                f_plot = np.array(float_offsets[idx])[fl_inds]
-                axn = plt.subplot(3,3,idx+1)
-                axn.hist(f_plot,color='r',alpha=0.5)
-                axn.set_title(var)
-        
-        #add crossover location map
-        #main float positions
-        axn = plt.subplot(3,2,6)
-        axn.plot(group.LONGITUDE,group.LATITUDE,'bo',label='Current float')
-        #test float positions
-        axn.plot(float_offsets[len(var_list_plot)*2+5,fl_inds],float_offsets[len(var_list_plot)*2+6][fl_inds],
-                label = 'test floats')
-    
-        plt.savefig(output_dir+str(wmo)+'_v_float.png')
-        
-    elif len(fl_inds)==0:
-        #glodap crossover only
-        #loop through each variable
-        for idx, var in enumerate(var_list_plot):
-            if len(gdap_offsets[idx]):
-                axn = plt.subplot(3,3,idx+1)
-                g_plot = np.array(gdap_offsets[idx])[g_inds]
-                axs.flat[idx].hist(g_plot,color='b',alpha=0.5)
-                axs.flat[idx].set_title(var)
-        
-        #add crossover location map
-        #main float positions
-        axn = plt.subplot(3,2,6)
-        axn.plot(group.LONGITUDE,group.LATITUDE,'bo',label='Current float')
-        #test float positions
-        axn.plot(float_offsets[len(var_list_plot)*2+5][fl_inds],float_offsets[len(var_list_plot)*2+6,fl_inds],
-                label = 'test floats')
-        #glodap
-        axn.plot(gdap_offsets[len(var_list_plot)*2+4][g_inds],gdap_offsets[len(var_list_plot)*2+6][g_inds],
-                '',label = 'Glodap')
-    
-        plt.savefig(output_dir+str(wmo)+'_v_glodap.png')
-    else:
-        #loop through each variable
-        for idx, var in enumerate(var_list_plot):
-            if len(float_offsets[idx]) and len(gdap_offsets[idx]):
-                axn = plt.subplot(3,3,idx+1)
-                f_plot = np.array(float_offsets[idx])[fl_inds]
-                g_plot = np.array(gdap_offsets[idx])[g_inds]
-                axn.hist(g_plot,color='b',alpha=0.5)
-                axn.hist(f_plot,color='r',alpha=0.5)
+            if len(float_offsets[idx*2]):
+                f_plot = np.array(float_offsets[idx*2])[fl_inds]
+                if not np.all(np.isnan(f_plot)):
+                    axn = plt.subplot(3,3,idx+1)
+                    axn.hist(f_plot,color='r',alpha=0.5)
                 axn.set_title(var)
         
         #add crossover location map
@@ -772,19 +751,75 @@ for wmo, group in argo_wmo:
         g_lat = np.array(gdap_offsets[16])[g_inds]
         
         axn = plt.subplot(3,2,6)
-        axn.plot(group.LONGITUDE,group.LATITUDE,'bo',markersize=2,label='Current float')
+        axn.plot(group.LONGITUDE,group.LATITUDE,'bo',markersize=10,label='Current float')
+        #test float positions
+        axn.plot(fl_lon,fl_lat,'go',label = 'test floats',markersize=10)
+
+        plt.grid(linestyle=':')
+        plt.legend()
+        plt.savefig(output_dir+str(wmo)+'_v_float.png')
+        plt.clf()
+        
+    elif len(fl_inds)==0:
+        #glodap crossover only
+        #loop through each variable
+        for idx, var in enumerate(var_list_plot):
+            if len(gdap_offsets[idx*2]):
+                axn = plt.subplot(3,3,idx+1)
+                g_plot = np.array(gdap_offsets[idx*2])[g_inds]
+                if not np.all(np.isnan(g_plot)):
+                    axn.hist(g_plot,color='b',alpha=0.5)
+                axn.set_title(var)
+        
+        #add crossover location map
+        #main float positions
+        fl_lon = np.array(float_offsets[17])[fl_inds]
+        fl_lat = np.array(float_offsets[19])[fl_inds]
+        g_lon = np.array(gdap_offsets[14])[g_inds]
+        g_lat = np.array(gdap_offsets[16])[g_inds]
+        
+        axn = plt.subplot(3,2,6)
+        axn.plot(group.LONGITUDE,group.LATITUDE,'bo',markersize=10,label='Current float')
+        #glodap
+        axn.plot(g_lon,g_lat,'mv',label = 'Glodap',markersize=10)
+        
+        plt.grid(linestyle=':')
+        plt.legend()
+        plt.savefig(output_dir+str(wmo)+'_v_glodap.png')
+        plt.clf()
+        
+    else:
+        #loop through each variable
+        for idx, var in enumerate(var_list_plot):
+            if len(float_offsets[idx*2]) and len(gdap_offsets[idx*2]):
+                axn = plt.subplot(3,3,idx+1)
+                #print(np.array(float_offsets[idx]))
+                f_plot = np.array(float_offsets[idx*2])[fl_inds]
+                g_plot = np.array(gdap_offsets[idx*2])[g_inds]
+                if not np.all(np.isnan(g_plot)):
+                    axn.hist(g_plot,color='b',alpha=0.5)
+                if not np.all(np.isnan(f_plot)):
+                    axn.hist(f_plot,color='r',alpha=0.5)
+                axn.set_title(var)
+        
+        #add crossover location map
+        #main float positions
+        fl_lon = np.array(float_offsets[17])[fl_inds]
+        fl_lat = np.array(float_offsets[19])[fl_inds]
+        g_lon = np.array(gdap_offsets[14])[g_inds]
+        g_lat = np.array(gdap_offsets[16])[g_inds]
+        
+        axn = plt.subplot(3,2,6)
+        axn.plot(group.LONGITUDE,group.LATITUDE,'bo',markersize=10,label='Current float')
         #test float positions
         axn.plot(fl_lon,fl_lat,'go',label = 'test floats',markersize=10)
         #glodap
         axn.plot(g_lon,g_lat,'mv',label = 'Glodap',markersize=10)
-    
+        
+        plt.grid(linestyle=':')
+        plt.legend()
         plt.savefig(output_dir+str(wmo)+'_v_float_and_glodap.png')
-
+        plt.clf()
 # -
-
-def clean_dataset(ds):
-    for var in ds.variables.values():
-        if 'chunksizes' in var.encoding:
-            del var.encoding['chunksizes']
 
 
