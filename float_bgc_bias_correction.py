@@ -250,11 +250,11 @@ for count, n in enumerate(argolist):
     nan_interp[:] = np.nan
     argo_interp_n = xr.Dataset()
     argo_interp_n['wmo'] = (['N_PROF'],np.repeat(wmo_n,nprof_n))
-    argo_interp_n['profile'] = (['N_PROF'],argo_n.CYCLE_NUMBER) 
-    argo_interp_n['juld'] = (['N_PROF'],argo_n.JULD_LOCATION)
+    argo_interp_n['profile'] = (['N_PROF'],argo_n.CYCLE_NUMBER.data) # added .data 
+    argo_interp_n['juld'] = (['N_PROF'],argo_n.JULD_LOCATION.data)
     #add lat -lons to Dataset
-    argo_interp_n['LATITUDE']  = (['N_PROF'],argo_n.LATITUDE)
-    argo_interp_n['LONGITUDE']  = (['N_PROF'],argo_n.LONGITUDE)
+    argo_interp_n['LATITUDE']  = (['N_PROF'],argo_n.LATITUDE.data)
+    argo_interp_n['LONGITUDE']  = (['N_PROF'],argo_n.LONGITUDE.data)
     argo_interp_n['num_var'] = (['N_PROF'],np.empty((nprof_n)))
     for v in var_list:
         argo_interp_n[v] = (['N_PROF','N_LEVELS'],np.copy(nan_interp))
