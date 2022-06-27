@@ -189,7 +189,7 @@ results = pyco2.sys(
     opt_k_bisulfate=1, # Dickson 1990 (Note, matlab co2sys combines KSO4 with TB. option 3 = KSO4 of Dickson & TB of Lee 2010)
     opt_total_borate=2, # Lee et al. 2010
     opt_k_fluoride=2, # Perez and Fraga 1987
-    buffers_mode='auto',
+    opt_buffers_mode=1, # used to be "buffers_mode='auto'" but seems to have changed in versions of pyco2?
 )
 
 
