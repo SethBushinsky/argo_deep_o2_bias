@@ -6,7 +6,7 @@
 #       extension: .py
 #       format_name: light
 #       format_version: '1.5'
-#       jupytext_version: 1.11.3
+#       jupytext_version: 1.13.8
 #   kernelspec:
 #     display_name: Python 3
 #     language: python
@@ -58,17 +58,43 @@ if not os.path.isdir('output'):
     os.mkdir('output')
 if not os.path.isdir('data'):
     os.mkdir('data')
+
+# +
+# read in a user-created text file to point to local directories to avoid having to change this every time 
+# we update code
+lines=[]
+with open('path_file.txt') as f:
+    lines = f.readlines()
+    
+count = 0
+for line in lines:
+    count += 1
+    index = line.find("=")
+    #print(f'line {count}: {line}')
+    #print(index)
+    #print(line[0:index])
+    line = line.rstrip()
+    if line[0:index].find("argo")>=0:
+        argo_path=line[index+1:]
+    elif line[0:index].find("liar")>=0:
+        liar_dir=line[index+1:]
+    elif line[0:index].find("matlab")>=0:
+        matlab_dir=line[index+1:]
+    
+#print(argo_path)
+#print(liar_dir)
+#print(matlab_dir)
 # -
 
 # ### User inputs: 
 
 # +
 #User local directories
-argo_path = data_dir+'Sprof/' #USER LOCAL ARGO PATH !!!!! NOTE assumes user has Sprof files downloaded from Dropbox
+#argo_path = data_dir+'Sprof/' #USER LOCAL ARGO PATH !!!!! NOTE assumes user has Sprof files downloaded from Dropbox
 #for now load fixed argo snapshot pre-downloaded Sprof files to make sure no updated QC 
 #will add optionality to re-download updated/more recent Argo Sprof
-matlab_dir  = '/Users/veronicatamsitt/Documents/MATLAB/' #set paths for MATLAB LIAR/LIPHR (on local computer!)
-liar_dir = matlab_dir + 'LIRs-master/'
+#matlab_dir  = '/Users/veronicatamsitt/Documents/MATLAB/' #set paths for MATLAB LIAR/LIPHR (on local computer!)
+#liar_dir = matlab_dir + 'LIRs-master/'
 
 #pressure limits for interpolation
 p_interp_min = 1200 #minimum pressure for float crossover comparison
@@ -163,7 +189,7 @@ results = pyco2.sys(
     opt_k_bisulfate=1, # Dickson 1990 (Note, matlab co2sys combines KSO4 with TB. option 3 = KSO4 of Dickson & TB of Lee 2010)
     opt_total_borate=2, # Lee et al. 2010
     opt_k_fluoride=2, # Perez and Fraga 1987
-    buffers_mode='auto',
+    opt_buffers_mode=1, # used to be "buffers_mode='auto'" but seems to have changed in versions of pyco2?
 )
 
 
@@ -231,11 +257,11 @@ for count, n in enumerate(argolist):
     nan_interp[:] = np.nan
     argo_interp_n = xr.Dataset()
     argo_interp_n['wmo'] = (['N_PROF'],np.repeat(wmo_n,nprof_n))
-    argo_interp_n['profile'] = (['N_PROF'],argo_n.CYCLE_NUMBER) 
-    argo_interp_n['juld'] = (['N_PROF'],argo_n.JULD_LOCATION)
+    argo_interp_n['profile'] = (['N_PROF'],argo_n.CYCLE_NUMBER.data) # added .data 
+    argo_interp_n['juld'] = (['N_PROF'],argo_n.JULD_LOCATION.data)
     #add lat -lons to Dataset
-    argo_interp_n['LATITUDE']  = (['N_PROF'],argo_n.LATITUDE)
-    argo_interp_n['LONGITUDE']  = (['N_PROF'],argo_n.LONGITUDE)
+    argo_interp_n['LATITUDE']  = (['N_PROF'],argo_n.LATITUDE.data)
+    argo_interp_n['LONGITUDE']  = (['N_PROF'],argo_n.LONGITUDE.data)
     argo_interp_n['num_var'] = (['N_PROF'],np.empty((nprof_n)))
     for v in var_list:
         argo_interp_n[v] = (['N_PROF','N_LEVELS'],np.copy(nan_interp))
