@@ -846,6 +846,6 @@ for wmo, group in argo_wmo:
         plt.legend()
         plt.savefig(output_dir+str(wmo)+'_v_float_and_glodap.png')
         plt.clf()
-# -
-
+# +
+#compare to SOCCOM floats
 
