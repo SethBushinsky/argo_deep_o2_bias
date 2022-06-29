@@ -4,7 +4,7 @@ channels:
   - defaults
 dependencies:
   - python=3.9
-  - xarray 
+  - xarray=2022.3.0 
   - dask 
   - netCDF4 
   - bottleneck 
@@ -12,9 +12,9 @@ dependencies:
   - scipy 
   - matplotlib 
   - cartopy 
-  - gsw  
+  - gsw=3.4.0 
   - jupyter 
   - jupytext
   - pip
   - pip:
-    - PyCO2SYS 
+    - PyCO2SYS=1.8.1 

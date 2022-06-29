@@ -6,7 +6,7 @@
 #       extension: .py
 #       format_name: light
 #       format_version: '1.5'
-#       jupytext_version: 1.13.8
+#       jupytext_version: 1.11.3
 #   kernelspec:
 #     display_name: Python 3
 #     language: python
@@ -80,10 +80,7 @@ for line in lines:
         liar_dir=line[index+1:]
     elif line[0:index].find("matlab")>=0:
         matlab_dir=line[index+1:]
-    
-#print(argo_path)
-#print(liar_dir)
-#print(matlab_dir)
+
 # -
 
 # ### User inputs: 
@@ -213,6 +210,7 @@ def clean_dataset(ds):
     for var in ds.variables.values():
         if 'chunksizes' in var.encoding:
             del var.encoding['chunksizes']
+            print('deleting chunksize')
 
 
 # +
@@ -349,7 +347,7 @@ for count, n in enumerate(argolist):
                 opt_k_bisulfate=1, # Dickson 1990 (Note, matlab co2sys combines KSO4 with TB. option 3 = KSO4 of Dickson & TB of Lee 2010)
                 opt_total_borate=2, # Lee et al. 2010
                 opt_k_fluoride=2, # Perez and Fraga 1987
-                buffers_mode='auto',
+                opt_buffers_mode=1,
         )
            
         argo_n['pH_25C_TOTAL'] = (['N_PROF','N_LEVELS'],results['pH_total_out'])
@@ -470,7 +468,7 @@ for count, n in enumerate(argolist):
     #could instead save each comparison var as a list of lists that can support different sizes r
     #rather than write to file?
     ###NOTE: currently getting a ValueError in to_netcdf for 1 float (2903176)
-    clean_dataset(argo_n)
+    #clean_dataset(argo_n)
     argo_n.to_netcdf(argo_path+str(wmo_n)+'_adjusted.nc', format="NETCDF4_CLASSIC")
     
     
@@ -482,8 +480,6 @@ for count, n in enumerate(argolist):
 
 
 # -
-
-argo_n
 
 # ## 3. Compare float - GLODAP crossovers
 
@@ -846,6 +842,6 @@ for wmo, group in argo_wmo:
         plt.legend()
         plt.savefig(output_dir+str(wmo)+'_v_float_and_glodap.png')
         plt.clf()
-# +
-#compare to SOCCOM floats
+# -
+# compare to SOCCOM floats
 
