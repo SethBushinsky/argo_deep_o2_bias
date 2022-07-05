@@ -105,6 +105,10 @@ p_compare_max = 2000
 
 #crossover distance range
 dist = 50.
+
+#variables to do crossover plot 
+var_list_plot = ['TEMP_ADJUSTED','PSAL_ADJUSTED','DOXY_ADJUSTED','NITRATE_ADJUSTED',
+                 'DIC','pH_25C_TOTAL_ADJUSTED','PDENS']
 # -
 
 # ## 1. Download and process GLODAP data
@@ -203,20 +207,12 @@ gdap = gdap.rename(columns={'G2longitude':'LONGITUDE', 'G2latitude':'LATITUDE', 
                             'G2talk':'TALK_LIAR', 'G2MLD':'MLD','G2o2sat':'o2sat', 'G2PTMP':'PTMP', 
                             'pH_in_situ_total':'PH_IN_SITU_TOTAL_ADJUSTED','G2sigma0':'PDENS'})
 
-
 # ## 2. Apply float bias corrections 
-
-def clean_dataset(ds):
-    for var in ds.variables.values():
-        if 'chunksizes' in var.encoding:
-            del var.encoding['chunksizes']
-            print('deleting chunksize')
-
 
 # +
 argolist = []
 for file in os.listdir(argo_path):
-    if file.endswith('.nc'):
+    if file.endswith('Sprof.nc'):
         argolist.append(file)
 LIAR_path = liar_dir
 
@@ -233,7 +229,7 @@ var_list = ['TEMP_ADJUSTED', 'PSAL_ADJUSTED', 'DOXY_ADJUSTED', 'NITRATE_ADJUSTED
 wmo_list= list()
 for count, n in enumerate(argolist):
     print('Processing float file '+ n)
-    argo_n = xr.open_dataset(argo_path+n)
+    argo_n = xr.load_dataset(argo_path+n)
     argo_n = argo_n.set_coords(('PRES_ADJUSTED','LATITUDE','LONGITUDE','JULD'))
 
     wmo_n = argo_n.PLATFORM_NUMBER.values.astype(int)[0]
@@ -429,32 +425,32 @@ for count, n in enumerate(argolist):
             #interpolate 1d profile data onto p_interp levels 
             # use valid var data from p_interp_min to p_interp_max OR maximum valid pressure 
             #(greater than minimum comparison pressure)
-            if any(~np.isnan(var100u)) and (np.nanmax(p100u[~np.isnan(var100u)])>p_compare_min):
-            
+
+            if len(p100u[~np.isnan(var100u.values)])>1 and (np.nanmax(p100u[~np.isnan(var100u.values)])>p_compare_min):
                 #interpolation function
-                f = interpolate.interp1d(p100u[~np.isnan(var100u)],var100u[~np.isnan(var100u)])
+                f = interpolate.interp1d(p100u[~np.isnan(var100u.values)],var100u[~np.isnan(var100u.values)])
                 
                 #check if non-NaN data does not extend down to p_interp_max
-                if np.logical_and((p100u[~np.isnan(var100u)][-1]<p_interp_max),
-                                  (p100u[~np.isnan(var100u)][0]>p_interp_min)):
-                    pmin_ind = np.argwhere(p_interp>p100u[~np.isnan(var100u)][0])[0][0]
-                    pmax_ind = np.argwhere(p_interp>p100u[~np.isnan(var100u)][-1])[0][0]
+                if np.logical_and((p100u[~np.isnan(var100u.values)][-1]<p_interp_max),
+                                  (p100u[~np.isnan(var100u.values)][0]>p_interp_min)):
+                    pmin_ind = np.argwhere(p_interp>p100u[~np.isnan(var100u.values)][0])[0][0]
+                    pmax_ind = np.argwhere(p_interp>p100u[~np.isnan(var100u.values)][-1])[0][0]
                     #if  p100u[~np.isnan(var100u)][0]>p_interp_min:                   
                     var_interp_p = f(p_interp[pmin_ind:pmax_ind])
                     #assign interpolated variables to array 
                     argo_interp_n[var][p,pmin_ind:pmax_ind] = var_interp_p
                     
-                elif p100u[~np.isnan(var100u)][-1]<p_interp_max:
-                    pmax_ind = np.argwhere(p_interp>p100u[~np.isnan(var100u)][-1])[0][0]
+                elif p100u[~np.isnan(var100u.values)][-1]<p_interp_max:
+                    pmax_ind = np.argwhere(p_interp>p100u[~np.isnan(var100u.values)][-1])[0][0]
                     var_interp_p = f(p_interp[:pmax_ind])
                     #assign interpolated variables to array 
                     argo_interp_n[var][p,:pmax_ind] = var_interp_p
                         
-                elif p100u[~np.isnan(var100u)][0]>p_interp_min:
-                    pmin_ind = np.argwhere(p_interp>p100u[~np.isnan(var100u)][0])[0][0]
+                elif p100u[~np.isnan(var100u.values)][0]>p_interp_min:
+                    pmin_ind = np.argwhere(p_interp>p100u[~np.isnan(var100u.values)][0])[0][0]
                     var_interp_p = f(p_interp[pmin_ind:])
                     #assign interpolated variables to array 
-                    argo_interp_n[var][p,pmin_ind:pmax_ind] = var_interp_p
+                    argo_interp_n[var][p,pmin_ind:] = var_interp_p
                     
                 else:
                     var_interp_p = f(p_interp)
@@ -467,10 +463,22 @@ for count, n in enumerate(argolist):
     #save adjusted/processed, non-interpolated data to use for crossovers
     #could instead save each comparison var as a list of lists that can support different sizes r
     #rather than write to file?
+    #or just output a dataset with only the relevant variables for crossovers?
+    
     ###NOTE: currently getting a ValueError in to_netcdf for 1 float (2903176)
     #clean_dataset(argo_n)
-    argo_n.to_netcdf(argo_path+str(wmo_n)+'_adjusted.nc', format="NETCDF4_CLASSIC")
-    
+    #argo_n.to_netcdf(argo_path+str(wmo_n)+'_adjusted.nc')
+    #workaround: create new dataset with relevant crossover variables only
+    argo_n_adjusted = xr.Dataset()
+    argo_n_adjusted['wmo'] = wmo_n
+    argo_n_adjusted['CYCLE_NUMBER'] = (['N_PROF'],argo_n.CYCLE_NUMBER.values)
+    argo_n_adjusted['LONGITUDE'] = (['N_PROF'],argo_n.LONGITUDE.values)
+    argo_n_adjusted['LATITUDE'] = (['N_PROF'],argo_n.LATITUDE.values)
+    argo_n_adjusted['JULD_LOCATION'] = (['N_PROF'],argo_n.JULD_LOCATION.values)
+    for var in var_list_plot:
+        if var in argo_n.keys():
+            argo_n_adjusted[var] = (['N_PROF','N_LEVELS'],argo_n[var].values)
+    argo_n_adjusted.to_netcdf(argo_path+str(wmo_n)+'_adjusted.nc')
     
     #Also save interpolated dataset as one mega Dataset for doing crossovers
     if count == 0:
@@ -485,9 +493,6 @@ for count, n in enumerate(argolist):
 
 # +
 #float- GLODAP crossover 
-#variables to do crossover plot 
-var_list_plot = ['TEMP_ADJUSTED','PSAL_ADJUSTED','DOXY_ADJUSTED','NITRATE_ADJUSTED',
-                 'DIC','pH_25C_TOTAL_ADJUSTED','PDENS']
 
 #restrict glodap data to comparison pressure range
 gdap_p = gdap[(gdap.PRES_ADJUSTED.values>p_compare_min) & (gdap.PRES_ADJUSTED.values<p_compare_max)]
