@@ -6,7 +6,7 @@
 #       extension: .py
 #       format_name: light
 #       format_version: '1.5'
-#       jupytext_version: 1.11.3
+#       jupytext_version: 1.13.8
 #   kernelspec:
 #     display_name: Python 3
 #     language: python
@@ -256,7 +256,7 @@ for count, n in enumerate(argolist):
     #add lat -lons to Dataset
     argo_interp_n['LATITUDE']  = (['N_PROF'],argo_n.LATITUDE.data)
     argo_interp_n['LONGITUDE']  = (['N_PROF'],argo_n.LONGITUDE.data)
-    argo_interp_n['num_var'] = (['N_PROF'],np.empty((nprof_n)))
+    argo_interp_n['num_var'] = (['N_PROF'],np.zeros((nprof_n))) # changed from np.empty to np.zeros to avoid filling array with random large numbers
     for v in var_list:
         argo_interp_n[v] = (['N_PROF','N_LEVELS'],np.copy(nan_interp))
     
@@ -408,7 +408,7 @@ for count, n in enumerate(argolist):
             if (vname in argo_n.keys()) and (np.any(~np.isnan(argo_n[vname]))):
                 var_list_n.append(vname)
                 
-        argo_interp['num_var'][p] = len(var_list_n)
+        argo_interp_n['num_var'][p] = len(var_list_n) # changed to argo_interp_n from argo_interp
         
         for var in var_list_n:
             var100 = argo_n[var][p,p_prof>100.]
