@@ -577,8 +577,8 @@ for wmo, group in argo_wmo:
                     gdap_offsets[idx*2+1].append(gdap_match[var][gdap_offset_ind])
                 #append nan if variable is not there so lists all remain same length?
                 else:
-                    float_offsets[idx*2].append(np.nan)
-                    float_offsets[idx*2+1].append(np.nan)
+                    gdap_offsets[idx*2].append(np.nan) # changed to gdap_offsets from float_offsets
+                    gdap_offsets[idx*2+1].append(np.nan) # changed to gdap_offsets from float_offsets
             
             #append metadata to offset list
             gdap_offsets[len(var_list_plot)*2].append(wmo)
