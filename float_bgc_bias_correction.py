@@ -227,9 +227,9 @@ var_list = ['TEMP_ADJUSTED', 'PSAL_ADJUSTED', 'DOXY_ADJUSTED', 'NITRATE_ADJUSTED
 #####
 #iterate through each float file 
 wmo_list= list()
-for count, n in enumerate(argolist):
-    print('Processing float file '+ n)
-    argo_n = xr.load_dataset(argo_path+n)
+for n in range(len(argolist)):
+    print('Processing float file '+ argolist[n])
+    argo_n = xr.load_dataset(argo_path+argolist[n])
     argo_n = argo_n.set_coords(('PRES_ADJUSTED','LATITUDE','LONGITUDE','JULD'))
 
     wmo_n = argo_n.PLATFORM_NUMBER.values.astype(int)[0]
@@ -426,7 +426,10 @@ for count, n in enumerate(argolist):
             # use valid var data from p_interp_min to p_interp_max OR maximum valid pressure 
             #(greater than minimum comparison pressure)
 
-            if len(p100u[~np.isnan(var100u.values)])>1 and (np.nanmax(p100u[~np.isnan(var100u.values)])>p_compare_min):
+            if len(p100u[~np.isnan(var100u.values)])>1 and \
+                (np.nanmax(p100u[~np.isnan(var100u.values)])>p_compare_min) and \
+                (np.nanmin(p100u[~np.isnan(var100u.values)])<p_compare_max):
+                
                 #interpolation function
                 f = interpolate.interp1d(p100u[~np.isnan(var100u.values)],var100u[~np.isnan(var100u.values)])
                 
@@ -481,7 +484,7 @@ for count, n in enumerate(argolist):
     argo_n_adjusted.to_netcdf(argo_path+str(wmo_n)+'_adjusted.nc')
     
     #Also save interpolated dataset as one mega Dataset for doing crossovers
-    if count == 0:
+    if n == 0:
         argo_interp = argo_interp_n
     else:
         argo_interp = xr.concat([argo_interp,argo_interp_n],'N_PROF')
