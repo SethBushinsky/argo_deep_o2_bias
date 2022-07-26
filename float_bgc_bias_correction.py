@@ -45,6 +45,7 @@ import PyCO2SYS as pyco2
 import gsw
 import float_data_processing as fl
 import carbon_utils
+import re
 
 # Create data directories
 
@@ -210,6 +211,7 @@ gdap = gdap.rename(columns={'G2longitude':'LONGITUDE', 'G2latitude':'LATITUDE', 
 # ## 2. Apply float bias corrections 
 
 # +
+append_data = 1 #reads in and adds to argo_interp_temp.nc rather than overwriting and running all floats
 argolist = []
 for file in os.listdir(argo_path):
     if file.endswith('Sprof.nc'):
@@ -223,12 +225,35 @@ qc_data_fields = ['TEMP_ADJUSTED', 'PSAL_ADJUSTED', 'DOXY_ADJUSTED', 'NITRATE_AD
 var_list = ['TEMP_ADJUSTED', 'PSAL_ADJUSTED', 'DOXY_ADJUSTED', 'NITRATE_ADJUSTED', 
             'pH_25C_TOTAL', 'PDENS', 'PRES_ADJUSTED', 'DIC']
 
+#if append data is set to 1, reads in argo_interp_temp.nc which contains prior argo_interp array, 
+#compare wmo numbers between argolist and the wmo numbers in argo_interp, and continues on processing 
+#float files. otherwise, start from the beginning
+if append_data==1 and os.path.exists(data_dir+'argo_interp_temp.nc'):
+    #load previously saved argo_interp
+    argo_interp = xr.load_dataset(data_dir+'argo_interp_temp.nc')
 
+    #extract wmo #s as integers from argolist
+    s = [int(s) for s in re.findall("[0-9]+", str(argolist_orig))]
+    
+    #find indices of argolist where argo_interp has matching wmos - don't need to run these again
+    indices = [s.index(i) for i in s if i not in argo_interp.wmo]
+    
+    #set start_index to first argolist index not found in argo_interp
+    start_index = indices[0]
+
+else:
+    #argolist=argolist_orig
+    start_index=0            
+                    
 #####
 #iterate through each float file 
+#calculates derived carbonate parameters (currently TALK, DIC), bias corrected pH and stores all in argo_n
+#interpolates all variables in "var_list" to 1 m resolution and stores in argo_interp_n
+#saves out individual float netcdf files with variables to be adjusted/used for crossovers
+#appends 1m interpolated dataset in argo_interp for comparison to glodap (not saved currently)
 wmo_list= list()
-for n in range(len(argolist)):
-    print('Processing float file '+ argolist[n])
+for n in range(start_index,len(argolist)):
+    print(str(n)+' Processing float file '+ argolist[n])
     argo_n = xr.load_dataset(argo_path+argolist[n])
     argo_n = argo_n.set_coords(('PRES_ADJUSTED','LATITUDE','LONGITUDE','JULD'))
 
@@ -488,6 +513,11 @@ for n in range(len(argolist)):
         argo_interp = argo_interp_n
     else:
         argo_interp = xr.concat([argo_interp,argo_interp_n],'N_PROF')
+                    
+    #save out argo_interp periodically:
+    if n/20==round(n/20):
+        argo_interp.to_netcdf(data_dir+'argo_interp_temp.nc')
+     
 
 
 # -
