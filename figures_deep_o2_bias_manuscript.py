@@ -8,7 +8,7 @@
 #       format_version: '1.5'
 #       jupytext_version: 1.13.8
 #   kernelspec:
-#     display_name: Python 3
+#     display_name: Python 3.9.12 ('float_bgc_synthesis_products')
 #     language: python
 #     name: python3
 # ---
@@ -36,15 +36,14 @@ def toYearFraction(date):
     s = sinceEpoch
 
     year = date.year
-    startOfThisYear = dt(year=year, month=1, day=1)
-    startOfNextYear = dt(year=year+1, month=1, day=1)
+    startOfThisYear = datetime(year=year, month=1, day=1)
+    startOfNextYear = datetime(year=year+1, month=1, day=1)
 
     yearElapsed = s(date) - s(startOfThisYear)
     yearDuration = s(startOfNextYear) - s(startOfThisYear)
     fraction = yearElapsed/yearDuration
 
     return date.year + fraction
-
 
 
 # +
