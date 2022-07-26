@@ -233,7 +233,7 @@ if append_data==1 and os.path.exists(data_dir+'argo_interp_temp.nc'):
     argo_interp = xr.load_dataset(data_dir+'argo_interp_temp.nc')
 
     #extract wmo #s as integers from argolist
-    s = [int(s) for s in re.findall("[0-9]+", str(argolist_orig))]
+    s = [int(s) for s in re.findall("[0-9]+", str(argolist))]
     
     #find indices of argolist where argo_interp has matching wmos - don't need to run these again
     indices = [s.index(i) for i in s if i not in argo_interp.wmo]
