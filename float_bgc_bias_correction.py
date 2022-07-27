@@ -285,6 +285,9 @@ for n in range(start_index,len(argolist)):
     for v in var_list:
         argo_interp_n[v] = (['N_PROF','N_LEVELS'],np.copy(nan_interp))
     
+    # we are currently processing floats that have no valid biogeochemical data. Should check to see if data in key 
+    #original bgc parameters (O2, NO3, pH) is valid and skip the rest if not
+    
     #check first if PH_IN_SITU_TOTAL_ADJUSTED exists
     if 'PH_IN_SITU_TOTAL_ADJUSTED' in argo_n.keys() and np.any(~np.isnan(argo_n.PH_IN_SITU_TOTAL_ADJUSTED)):
         
@@ -539,15 +542,20 @@ num_meta_items = 7
 gdap_offsets =  [[] for _ in range(2*len(var_list_plot)+num_meta_items)]
 
 #iterate over each float & profile
+float_count = 0
 for wmo, group in argo_wmo:
-    
     #number of profiles
     nprof = group.LATITUDE.shape[0]
     
      #check sufficient non-NaN data
-    if group.num_var[0]<4:
+    if np.sum(group.num_var>4)==0: #changed to look at all profiles and to only select floats 
+        # with more than 4 variables present (i.e. more than T, S, Press, Dens)
         print('No non-NAN bgc adjusted data for: '+str(wmo))
         continue
+    
+    float_count = float_count+1
+
+    print('Float ' + str(float_count) + ' ' + str(wmo))
     
     #  Find lat-lon limits within dist of float location
     lat_tol = dist/ 111.6 
@@ -622,9 +630,8 @@ for wmo, group in argo_wmo:
             gdap_offsets[len(var_list_plot)*2+5].append(group.LATITUDE[n].values)
             gdap_offsets[len(var_list_plot)*2+6].append(gdap_match.LATITUDE[gdap_match.LATITUDE.index[0]])
             #can add additional float metadata variable to list here
+    
 
-
-# +
 #convert GLODAP offset lists to xarray Dataset and save to netcdf file
 glodap_offsets = xr.Dataset()
 for idx, var in enumerate(var_list_plot):
@@ -643,6 +650,7 @@ glodap_offsets.to_netcdf(output_dir+'glodap_offsets.nc')
 
 print('Total number of glodap crossovers: ' + str(len(gdap_offsets[len(var_list_plot)*2])))
 # -
+
 
 # ## 4. Compare float - float crossovers
 
