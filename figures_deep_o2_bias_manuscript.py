@@ -8,7 +8,7 @@
 #       format_version: '1.5'
 #       jupytext_version: 1.13.8
 #   kernelspec:
-#     display_name: Python 3.9.12 ('float_bgc_synthesis_products')
+#     display_name: Python 3
 #     language: python
 #     name: python3
 # ---
@@ -67,10 +67,14 @@ for line in lines:
         liar_dir=line[index+1:]
     elif line[0:index].find("matlab")>=0:
         matlab_dir=line[index+1:]
+        
+# Set the paths
+output_dir = 'output/'
+data_dir = 'data/'
 
 
 # +
-output_dir = 'figures_o2_bias/'
+output_dir_figs = 'figures_o2_bias/'
 
 #check directories exist
 if not os.path.isdir('figures_o2_bias'):
@@ -157,6 +161,30 @@ sct = plt.scatter(x=argo_wmo.LONGITUDE,
             c=avg_date_dec_year,cmap='turbo',s=10)
 cbar = plt.colorbar(sct, fraction=.08, pad = 0.04, shrink=0.5)
 cbar.set_label('Year', labelpad=15, fontsize=14)
-plt.savefig(output_dir+ 'Fig_1_O2_float_map_date.png')
+plt.savefig(output_dir_figs+ 'Fig_1_O2_float_map_date.png')
 plt.show()
+
+# -
+
+# Figure 3. Histograms showing any bias in bgc parameters from crossovers with gloda
+#
+
+glodap_offsets = xr.load_dataset(output_dir+'glodap_offsets.nc')
+
+# +
+plt.figure(figsize=(20,12))
+plt.hist(glodap_offsets.DOXY_ADJUSTED_offset)
+plt.xlabel('DOXY Offset')
+plt.savefig(output_dir_figs + 'Glodap_offsets_doxy_no_filt.png')
+
+# apparently need to filter out and understand some very large outliers
+
+# +
+print(np.mean(glodap_offsets.DOXY_ADJUSTED_offset))
+print(np.nanmedian(glodap_offsets.DOXY_ADJUSTED_offset))
+
+plt.figure(figsize=(20,12))
+plt.hist(glodap_offsets.DOXY_ADJUSTED_offset, bins=np.linspace(-400, 400, 401))
+plt.xlabel('DOXY Offset')
+plt.savefig(output_dir_figs + 'Glodap_offsets_doxy_plus_minus_400.png')
 
