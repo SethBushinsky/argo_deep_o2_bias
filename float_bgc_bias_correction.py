@@ -45,6 +45,7 @@ import PyCO2SYS as pyco2
 import gsw
 import float_data_processing as fl
 import carbon_utils
+import re
 
 # Create data directories
 
@@ -210,6 +211,7 @@ gdap = gdap.rename(columns={'G2longitude':'LONGITUDE', 'G2latitude':'LATITUDE', 
 # ## 2. Apply float bias corrections 
 
 # +
+append_data = 1 #reads in and adds to argo_interp_temp.nc rather than overwriting and running all floats
 argolist = []
 for file in os.listdir(argo_path):
     if file.endswith('Sprof.nc'):
@@ -223,12 +225,35 @@ qc_data_fields = ['TEMP_ADJUSTED', 'PSAL_ADJUSTED', 'DOXY_ADJUSTED', 'NITRATE_AD
 var_list = ['TEMP_ADJUSTED', 'PSAL_ADJUSTED', 'DOXY_ADJUSTED', 'NITRATE_ADJUSTED', 
             'pH_25C_TOTAL', 'PDENS', 'PRES_ADJUSTED', 'DIC']
 
+#if append data is set to 1, reads in argo_interp_temp.nc which contains prior argo_interp array, 
+#compare wmo numbers between argolist and the wmo numbers in argo_interp, and continues on processing 
+#float files. otherwise, start from the beginning
+if append_data==1 and os.path.exists(data_dir+'argo_interp_temp.nc'):
+    #load previously saved argo_interp
+    argo_interp = xr.load_dataset(data_dir+'argo_interp_temp.nc')
 
+    #extract wmo #s as integers from argolist
+    s = [int(s) for s in re.findall("[0-9]+", str(argolist))]
+    
+    #find indices of argolist where argo_interp has matching wmos - don't need to run these again
+    indices = [s.index(i) for i in s if i not in argo_interp.wmo]
+    
+    #set start_index to first argolist index not found in argo_interp
+    start_index = indices[0]
+
+else:
+    #argolist=argolist_orig
+    start_index=0            
+                    
 #####
 #iterate through each float file 
+#calculates derived carbonate parameters (currently TALK, DIC), bias corrected pH and stores all in argo_n
+#interpolates all variables in "var_list" to 1 m resolution and stores in argo_interp_n
+#saves out individual float netcdf files with variables to be adjusted/used for crossovers
+#appends 1m interpolated dataset in argo_interp for comparison to glodap (not saved currently)
 wmo_list= list()
-for n in range(len(argolist)):
-    print('Processing float file '+ argolist[n])
+for n in range(start_index,len(argolist)):
+    print(str(n)+' Processing float file '+ argolist[n])
     argo_n = xr.load_dataset(argo_path+argolist[n])
     argo_n = argo_n.set_coords(('PRES_ADJUSTED','LATITUDE','LONGITUDE','JULD'))
 
@@ -259,6 +284,9 @@ for n in range(len(argolist)):
     argo_interp_n['num_var'] = (['N_PROF'],np.zeros((nprof_n))) # changed from np.empty to np.zeros to avoid filling array with random large numbers
     for v in var_list:
         argo_interp_n[v] = (['N_PROF','N_LEVELS'],np.copy(nan_interp))
+    
+    # we are currently processing floats that have no valid biogeochemical data. Should check to see if data in key 
+    #original bgc parameters (O2, NO3, pH) is valid and skip the rest if not
     
     #check first if PH_IN_SITU_TOTAL_ADJUSTED exists
     if 'PH_IN_SITU_TOTAL_ADJUSTED' in argo_n.keys() and np.any(~np.isnan(argo_n.PH_IN_SITU_TOTAL_ADJUSTED)):
@@ -488,6 +516,11 @@ for n in range(len(argolist)):
         argo_interp = argo_interp_n
     else:
         argo_interp = xr.concat([argo_interp,argo_interp_n],'N_PROF')
+                    
+    #save out argo_interp periodically:
+    if n/20==round(n/20):
+        argo_interp.to_netcdf(data_dir+'argo_interp_temp.nc')
+     
 
 
 # -
@@ -509,15 +542,20 @@ num_meta_items = 7
 gdap_offsets =  [[] for _ in range(2*len(var_list_plot)+num_meta_items)]
 
 #iterate over each float & profile
+float_count = 0
 for wmo, group in argo_wmo:
-    
     #number of profiles
     nprof = group.LATITUDE.shape[0]
     
      #check sufficient non-NaN data
-    if group.num_var[0]<4:
+    if np.sum(group.num_var>4)==0: #changed to look at all profiles and to only select floats 
+        # with more than 4 variables present (i.e. more than T, S, Press, Dens)
         print('No non-NAN bgc adjusted data for: '+str(wmo))
         continue
+    
+    float_count = float_count+1
+
+    print('Float ' + str(float_count) + ' ' + str(wmo))
     
     #  Find lat-lon limits within dist of float location
     lat_tol = dist/ 111.6 
@@ -592,9 +630,8 @@ for wmo, group in argo_wmo:
             gdap_offsets[len(var_list_plot)*2+5].append(group.LATITUDE[n].values)
             gdap_offsets[len(var_list_plot)*2+6].append(gdap_match.LATITUDE[gdap_match.LATITUDE.index[0]])
             #can add additional float metadata variable to list here
+    
 
-
-# +
 #convert GLODAP offset lists to xarray Dataset and save to netcdf file
 glodap_offsets = xr.Dataset()
 for idx, var in enumerate(var_list_plot):
@@ -613,6 +650,7 @@ glodap_offsets.to_netcdf(output_dir+'glodap_offsets.nc')
 
 print('Total number of glodap crossovers: ' + str(len(gdap_offsets[len(var_list_plot)*2])))
 # -
+
 
 # ## 4. Compare float - float crossovers
 
