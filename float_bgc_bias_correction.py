@@ -6,7 +6,7 @@
 #       extension: .py
 #       format_name: light
 #       format_version: '1.5'
-#       jupytext_version: 1.13.8
+#       jupytext_version: 1.11.3
 #   kernelspec:
 #     display_name: Python 3
 #     language: python
@@ -221,6 +221,8 @@ LIAR_path = liar_dir
 #float QC data fields
 qc_data_fields = ['TEMP_ADJUSTED', 'PSAL_ADJUSTED', 'DOXY_ADJUSTED', 'NITRATE_ADJUSTED',  'PRES_ADJUSTED']
 
+bgc_data_fields = ['DOXY_ADJUSTED', 'NITRATE_ADJUSTED', 'pH_25C_TOTAL']
+
 #variables to do crossover calculation
 var_list = ['TEMP_ADJUSTED', 'PSAL_ADJUSTED', 'DOXY_ADJUSTED', 'NITRATE_ADJUSTED', 
             'pH_25C_TOTAL', 'PDENS', 'PRES_ADJUSTED', 'DIC']
@@ -268,6 +270,22 @@ for n in range(start_index,len(argolist)):
             qc_val = argo_n[q+'_QC'].values.astype('float')
             argo_n[q].where(np.logical_and(qc_val<3.,qc_val>4.))
             
+            #check for any Inf values not included in QC flag and set to NaN
+            argo_n[q].values[np.isinf(argo_n[q]).values] = np.nan
+
+    # we are currently processing floats that have no valid biogeochemical data. 
+    #Should check to see if data in key 
+    #original bgc parameters (O2, NO3, pH) is valid and skip the rest if not
+    bgc_valid = 0
+    for b in bgc_data_fields:
+        if b in argo_n.keys() and np.any(~np.isnan(argo_n[b])):
+            bgc_valid = bgc_valid+1
+    if bgc_valid >=1:
+        print('float has valid BGC data')
+    else:
+        print('float has no valid BGC data')
+        continue
+    
     argo_n['PDENS'] = (['N_PROF','N_LEVELS'],np.empty(argo_n.PRES_ADJUSTED.shape)) #nprof x nlevel
     argo_n.PDENS[:] = np.nan
     
@@ -285,9 +303,7 @@ for n in range(start_index,len(argolist)):
     for v in var_list:
         argo_interp_n[v] = (['N_PROF','N_LEVELS'],np.copy(nan_interp))
     
-    # we are currently processing floats that have no valid biogeochemical data. Should check to see if data in key 
-    #original bgc parameters (O2, NO3, pH) is valid and skip the rest if not
-    
+
     #check first if PH_IN_SITU_TOTAL_ADJUSTED exists
     if 'PH_IN_SITU_TOTAL_ADJUSTED' in argo_n.keys() and np.any(~np.isnan(argo_n.PH_IN_SITU_TOTAL_ADJUSTED)):
         
@@ -376,12 +392,14 @@ for n in range(start_index,len(argolist)):
            
         argo_n['pH_25C_TOTAL'] = (['N_PROF','N_LEVELS'],results['pH_total_out'])
         argo_n['DIC'] = (['N_PROF','N_LEVELS'],results['dic'])  
+        argo_n['pCO2'] = (['N_PROF','N_LEVELS'],results['pCO2_out'])  
         
         #is it necessary to loop through each float profile for co2sys or can we use apply_ufunc instead?
         for p in range(nprof_n):
+            
             # skip a profile if pH is above 10.  There seem to be pH's above 10 that causing 
-            #if any(argo_n.PH_IN_SITU_TOTAL_ADJUSTED[p,:]>10) or all(np.isnan(argo_n.PH_IN_SITU_TOTAL_ADJUSTED[p,:])):
-            #    continue
+            if any(argo_n.PH_IN_SITU_TOTAL_ADJUSTED[p,:]>10) or all(np.isnan(argo_n.PH_IN_SITU_TOTAL_ADJUSTED[p,:])):
+                continue
     
             #apply pH bias correction   
             #find if there are valid values between fixed p levels 
@@ -403,7 +421,28 @@ for n in range(start_index,len(argolist)):
                 argo_n.bias_corr[p] = np.nanmean(correction)
                 argo_n.pH_insitu_corr[p,:] = argo_n.PH_IN_SITU_TOTAL_ADJUSTED[p,:]+argo_n.bias_corr[p]
     
-
+        #call CO2sys again to get pCO2 with corrected PH
+        results = pyco2.sys(
+                par1=argo_n.TALK_LIAR, 
+                par2=argo_n.pH_insitu_corr,
+                par1_type=1,
+                par2_type=3,
+                temperature=argo_n.TEMP_ADJUSTED, 
+                pressure=argo_n.PRES_ADJUSTED, 
+                salinity=argo_n.PSAL_ADJUSTED, 
+                temperature_out=25., #fixed 25C temperature
+                pressure_out=argo_n.PRES_ADJUSTED,
+                total_silicate=SI,
+                total_phosphate=PO4,
+                opt_pH_scale = 1, #total
+                opt_k_carbonic=10, #Lueker et al. 2000
+                opt_k_bisulfate=1, # Dickson 1990 (Note, matlab co2sys combines KSO4 with TB. option 3 = KSO4 of Dickson & TB of Lee 2010)
+                opt_total_borate=2, # Lee et al. 2010
+                opt_k_fluoride=2, # Perez and Fraga 1987
+                opt_buffers_mode=1,
+                )
+ 
+        argo_n['pCO2_pH_corr'] = (['N_PROF','N_LEVELS'],results['pCO2_out'])  
     
     ##### now calc potential density, save, and interpolate data for comparison
     for p in range(nprof_n):
