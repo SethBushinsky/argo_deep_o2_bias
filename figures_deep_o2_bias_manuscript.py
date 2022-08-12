@@ -24,8 +24,10 @@ import xarray as xr
 import glob, os
 import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
+import cartopy.feature as cfeature
 from datetime import datetime, date, time
 import time
+from scipy import stats
 
 
 # Function for converting date to year fraction (taken from stack overflow: https://stackoverflow.com/questions/6451655/how-to-convert-python-datetime-dates-to-decimal-float-years)
@@ -104,6 +106,7 @@ for n in range(last, len(argolist)):
     
     var_list = list(argo_n.data_vars)
     if "DOXY_ADJUSTED" not in var_list:
+        print('Skipping')
         continue
             
     doxy_trimmed = argo_n.DOXY_ADJUSTED.where(~np.isnan(argo_n.DOXY_ADJUSTED), drop=True)
@@ -136,7 +139,7 @@ plt.plot(argo_all.LONGITUDE, argo_all.LATITUDE, linestyle='none', marker='.', ma
 plt.show()
 
 # +
-### Note that this currently screws up Longitude averaging for floats that cross -180/180. Need to deal with that
+# Average data by wmo. Longitude is currently incorrectly averaged, which is fixed below
 argo_wmo = argo_all.groupby('wmo').mean()
 
 avg_date = argo_all.juld.astype('int64').groupby(argo_all['wmo']).mean().astype('datetime64[ns]')
@@ -147,7 +150,30 @@ for i in avg_date.values:
     x = pd.Timestamp(i)
     y = toYearFraction(x)
     avg_date_dec_year.append(y)
+# -
 
+
+for wmo in argo_wmo.wmo:
+    temp_LONGITUDE = argo_all.LONGITUDE.where(argo_all.wmo==wmo, drop=True)
+    if (np.max(temp_LONGITUDE) - np.min(temp_LONGITUDE))>300:
+        print('YES')
+        new_mean = np.mean(xr.where(temp_LONGITUDE>=0, temp_LONGITUDE, temp_LONGITUDE+360))
+        if new_mean>180:
+            new_mean = new_mean-360
+            old_mean = argo_wmo.LONGITUDE.where(argo_wmo.wmo==wmo, drop=True)
+
+        #print('old mean: '  + str(old_mean.values))
+        #print('new mean: '  + str(new_mean.values))
+
+        # put new LONGITUDE mean back into argo_wmo
+        argo_wmo['LONGITUDE'] = argo_wmo.LONGITUDE.where(argo_wmo.wmo!=wmo, new_mean)
+        #updated_mean = argo_wmo.LONGITUDE.where(argo_wmo.wmo==wmo, drop=True)
+
+        #print('new mean: '  + str(updated_mean.values))
+
+        #new_mean
+    #else:
+        #print('NO')
 
 # +
 # Figure 1
@@ -166,7 +192,47 @@ plt.show()
 
 # -
 
-# Figure 3. Histograms showing any bias in bgc parameters from crossovers with gloda
+# Alternate version of Figure 1: gridded observational density
+
+# +
+# Gridded density plot taken from J. Lilly's Distributional-Analysis code: http://www.jmlilly.net/course/labs/html/DistributionalAnalysis-Python.html
+figsize=np.array([18, 12]);
+projection=ccrs.PlateCarree();
+
+cmap = plt.cm.get_cmap("Spectral_r", 64)
+
+#for future reference, define a function to set up our map
+def map_setup(figsize,projection):
+    fig = plt.figure(figsize=figsize)
+    ax = fig.add_subplot(projection=projection)
+    ax.add_feature(cfeature.LAND, facecolor='grey')
+    gl = ax.gridlines(draw_labels=True)  
+    gl
+    gl.xlabel_style = {'size': 15}
+    gl.ylabel_style = {'size': 15}
+    return fig, ax 
+
+fig, ax = map_setup(figsize,projection) 
+
+dlatlon = 1
+lonbins = np.arange(-180, 180, dlatlon)
+latbins = np.arange(-80, 80, dlatlon)
+
+hist = stats.binned_statistic_2d(argo_all.LATITUDE, argo_all.LONGITUDE, None, bins=[latbins, lonbins], statistic="count")
+hist.statistic[hist.statistic == 0] = np.nan  # Sets all values of 0 to nan as log10(0) = -inf
+hist.statistic
+
+image = plt.pcolormesh(lonbins, latbins, hist.statistic, cmap=cmap, shading="flat", transform=ccrs.PlateCarree()) 
+plt.clim(0, 100) 
+
+cbar = fig.colorbar(image, ax=ax, orientation='horizontal', fraction=0.1, aspect=40, pad=0.08)
+               
+cbar.ax.tick_params(labelsize=20)
+cbar.set_label(label='Number of Observations', size=20)
+plt.savefig(output_dir_figs+ 'Fig_1v2_Argo_O2_Sampling_Density.png')
+# -
+
+# Figure 3. Histograms showing any bias in bgc parameters from crossovers with glodap
 #
 
 glodap_offsets = xr.load_dataset(output_dir+'glodap_offsets.nc')
