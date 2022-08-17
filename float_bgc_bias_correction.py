@@ -87,13 +87,6 @@ for line in lines:
 # ### User inputs: 
 
 # +
-#User local directories
-#argo_path = data_dir+'Sprof/' #USER LOCAL ARGO PATH !!!!! NOTE assumes user has Sprof files downloaded from Dropbox
-#for now load fixed argo snapshot pre-downloaded Sprof files to make sure no updated QC 
-#will add optionality to re-download updated/more recent Argo Sprof
-#matlab_dir  = '/Users/veronicatamsitt/Documents/MATLAB/' #set paths for MATLAB LIAR/LIPHR (on local computer!)
-#liar_dir = matlab_dir + 'LIRs-master/'
-
 #pressure limits for interpolation
 p_interp_min = 1200 #minimum pressure for float crossover comparison
 p_interp_max = 2000 #maximum pressure for float crossover comparison
@@ -171,7 +164,7 @@ gdap['pH_in_situ_total'] = results
 gdap.pH_in_situ_total[np.isnan(gdap.G2phts25p0)] = np.nan
 
 # +
-# gdap pH 25C -> Nancy or Seth to double check this matches the MATLAB SOCCOM version
+# gdap pH 25C 
 #   *SOCCOM* version modified by Nancy Williams on 10/15/15 according to
 #    Dickson in 9/7/15 e-mail and in Dickson et al. 2007 
 #    changed KF to Perez and Fraga 1987
@@ -545,10 +538,12 @@ for n in range(start_index,len(argolist)):
     argo_n_adjusted['LONGITUDE'] = (['N_PROF'],argo_n.LONGITUDE.values)
     argo_n_adjusted['LATITUDE'] = (['N_PROF'],argo_n.LATITUDE.values)
     argo_n_adjusted['JULD_LOCATION'] = (['N_PROF'],argo_n.JULD_LOCATION.values)
+    argo_n_adjusted['PRES_ADJUSTED'] = (['N_PROF','N_LEVELS'],argo_n.PRES_ADJUSTED.values)
     for var in var_list_plot:
         if var in argo_n.keys():
             argo_n_adjusted[var] = (['N_PROF','N_LEVELS'],argo_n[var].values)
     argo_n_adjusted.to_netcdf(argo_path+str(wmo_n)+'_adjusted.nc')
+    #should we add pCO2 to the saved adjusted file?
     
     #Also save interpolated dataset as one mega Dataset for doing crossovers
     if n == 0:
@@ -571,6 +566,9 @@ for n in range(start_index,len(argolist)):
 
 #restrict glodap data to comparison pressure range
 gdap_p = gdap[(gdap.PRES_ADJUSTED.values>p_compare_min) & (gdap.PRES_ADJUSTED.values<p_compare_max)]
+
+#load saved argo_interp data if needed
+argo_interp = xr.open_dataset(data_dir+'argo_interp_temp.nc')
 
 #group by float wmo
 argo_wmo = argo_interp.groupby('wmo')
@@ -607,32 +605,50 @@ for wmo, group in argo_wmo:
 
     #find all data in lat-lon limits
     for n in range(nprof):
+
         
         #index of all gdap profiles within distance range
-        if lon_min[n] < 0:
+        if lon_min[n] < 0 and lon_max[n]>0:
             match = np.logical_and(np.logical_and(gdap_p.LATITUDE.values>lat_min[n],
                                                   gdap_p.LATITUDE.values<lat_max[n]),
                                    np.logical_or(gdap_p.LONGITUDE.values>lon_min[n]+360,
                                                   gdap_p.LONGITUDE.values<lon_max[n]))
-        elif lon_max[n] > 360:
+            
+        elif lon_min[n] < 0 and lon_max[n]<0:
+            match = np.logical_and(np.logical_and(gdap_p.LATITUDE.values>lat_min[n],
+                                                  gdap_p.LATITUDE.values<lat_max[n]),
+                                   np.logical_and(gdap_p.LONGITUDE.values>lon_min[n]+360,
+                                                  gdap_p.LONGITUDE.values<lon_max[n]+360))  
+            
+        elif lon_max[n] > 360 and lon_min[n] < 360:
             match = np.logical_and(np.logical_and(gdap_p.LATITUDE.values>lat_min[n],
                                                   gdap_p.LATITUDE.values<lat_max[n]),
                                    np.logical_or(gdap_p.LONGITUDE.values>lon_min[n],
                                                   gdap_p.LONGITUDE.values<lon_max[n]-360))
+
+        elif lon_max[n] > 360 and lon_min[n] > 360:
+            match = np.logical_and(np.logical_and(gdap_p.LATITUDE.values>lat_min[n],
+                                                  gdap_p.LATITUDE.values<lat_max[n]),
+                                   np.logical_and(gdap_p.LONGITUDE.values>lon_min[n]-360,
+                                                  gdap_p.LONGITUDE.values<lon_max[n]-360))
+
         else:
             match = np.logical_and(np.logical_and(gdap_p.LATITUDE.values>lat_min[n],
                                                   gdap_p.LATITUDE.values<lat_max[n]),
                                    np.logical_and(gdap_p.LONGITUDE.values>lon_min[n],
                                                   gdap_p.LONGITUDE.values<lon_max[n]))
+
         match = np.squeeze(match)
         match_inds = np.argwhere(match)
         
         #get matched glodap data subset
         if len(match_inds)==0:
             continue
+        
         #get glodap data points that match
         gdap_match = gdap_p[match]
 
+        
         #find index of interp profile density that most closely matches each glodap match point density
         for m in range(len(match_inds)):
             #if no interpolated density (not deep enough) then move on to next profile
@@ -927,6 +943,3 @@ for wmo, group in argo_wmo:
         plt.legend()
         plt.savefig(output_dir+str(wmo)+'_v_float_and_glodap.png')
         plt.clf()
-# -
-# compare to SOCCOM floats
-
