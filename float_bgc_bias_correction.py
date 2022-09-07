@@ -82,6 +82,10 @@ for line in lines:
     elif line[0:index].find("matlab")>=0:
         matlab_dir=line[index+1:]
 
+#add derived float file directory within argo_path
+argo_path_derived = argo_path+'derived/'
+if not os.path.isdir(argo_path_derived):
+    os.mkdir(argo_path_derived)
 # -
 
 # ### User inputs: 
@@ -188,10 +192,9 @@ results = pyco2.sys(
 )
 
 
-gdap.pH_25C_TOTAL = results['pH_total_out']
-
+gdap['pH_25C_TOTAL_ADJUSTED'] = results['pH_total_out']
 #set pH to nan where there was no original pH data from GLODAP
-gdap.pH_25C_TOTAL[np.isnan(gdap.G2phts25p0)]=np.nan
+gdap.pH_25C_TOTAL_ADJUSTED[np.isnan(gdap.G2phts25p0)]=np.nan
 # -
 
 #rename GLODAP comparison variables to match argo
@@ -214,11 +217,11 @@ LIAR_path = liar_dir
 #float QC data fields
 qc_data_fields = ['TEMP_ADJUSTED', 'PSAL_ADJUSTED', 'DOXY_ADJUSTED', 'NITRATE_ADJUSTED',  'PRES_ADJUSTED']
 
-bgc_data_fields = ['DOXY_ADJUSTED', 'NITRATE_ADJUSTED', 'pH_25C_TOTAL']
+bgc_data_fields = ['DOXY_ADJUSTED', 'NITRATE_ADJUSTED', 'PH_IN_SITU_TOTAL_ADJUSTED']
 
 #variables to do crossover calculation
-var_list = ['TEMP_ADJUSTED', 'PSAL_ADJUSTED', 'DOXY_ADJUSTED', 'NITRATE_ADJUSTED', 
-            'pH_25C_TOTAL', 'PDENS', 'PRES_ADJUSTED', 'DIC']
+var_list = ['TEMP_ADJUSTED', 'PSAL_ADJUSTED', 'DOXY_ADJUSTED', 'NITRATE_ADJUSTED', 'PH_IN_SITU_TOTAL_ADJUSTED',
+            'pH_25C_TOTAL_ADJUSTED', 'pH_25C_corr', 'PDENS', 'PRES_ADJUSTED', 'DIC','TALK_LIAR','pCO2','pCO2_pH_corr']
 
 #if append data is set to 1, reads in argo_interp_temp.nc which contains prior argo_interp array, 
 #compare wmo numbers between argolist and the wmo numbers in argo_interp, and continues on processing 
@@ -246,6 +249,9 @@ else:
 #interpolates all variables in "var_list" to 1 m resolution and stores in argo_interp_n
 #saves out individual float netcdf files with variables to be adjusted/used for crossovers
 #appends 1m interpolated dataset in argo_interp for comparison to glodap (not saved currently)
+
+
+
 wmo_list= list()
 for n in range(start_index,len(argolist)):
     print(str(n)+' Processing float file '+ argolist[n])
@@ -305,12 +311,14 @@ for n in range(start_index,len(argolist)):
         #initialise pH 25c and DIC variables - could do this only if float has pH
         argo_n['TALK_LIAR'] = (['N_PROF','N_LEVELS'],np.empty(argo_n.PRES_ADJUSTED.shape)) #nprof x nlevel
         argo_n.TALK_LIAR[:] = np.nan
-        argo_n['pH_25C_TOTAL'] = (['N_PROF','N_LEVELS'],np.empty(argo_n.PRES_ADJUSTED.shape)) #nprof x nlevel
-        argo_n.pH_25C_TOTAL[:] = np.nan
+        argo_n['pH_25C_TOTAL_ADJUSTED'] = (['N_PROF','N_LEVELS'],np.empty(argo_n.PRES_ADJUSTED.shape)) #nprof x nlevel
+        argo_n.pH_25C_TOTAL_ADJUSTED[:] = np.nan
         argo_n['DIC'] = (['N_PROF','N_LEVELS'],np.empty(argo_n.PRES_ADJUSTED.shape)) #nprof x nlevel
         argo_n.DIC[:] = np.nan
         argo_n['pH_insitu_corr'] = (['N_PROF','N_LEVELS'],np.empty(argo_n.PRES_ADJUSTED.shape)) #nprof x nlevel
         argo_n.pH_insitu_corr[:] = np.nan
+        argo_n['pH_25C_corr'] = (['N_PROF','N_LEVELS'],np.empty(argo_n.PRES_ADJUSTED.shape)) #nprof x nlevel
+        argo_n.pH_25C_corr[:] = np.nan
         argo_n['bias_corr'] = (['N_PROF','N_LEVELS'],np.empty(argo_n.PRES_ADJUSTED.shape)) #nprof
         argo_n.bias_corr[:] = np.nan
 
@@ -337,7 +345,7 @@ for n in range(start_index,len(argolist)):
                              argo_n.DOXY_ADJUSTED.values.flatten()),
                              axis=1)
             MeasIDVec = [1, 7, 3, 6]
-
+   
         else:
             SI = np.zeros((argo_n.PH_IN_SITU_TOTAL_ADJUSTED.shape))
             PO4 = np.zeros((argo_n.PH_IN_SITU_TOTAL_ADJUSTED.shape))
@@ -353,13 +361,13 @@ for n in range(start_index,len(argolist)):
 
 
         results = carbon_utils.LIAR_matlab(LIAR_path,
-                                           Coordinates.tolist(),
-                                           Measurements.tolist(),
-                                           MeasIDVec,
-                                           VerboseTF=False)                                  
+                                               Coordinates.tolist(),
+                                               Measurements.tolist(),
+                                               MeasIDVec,
+                                               VerboseTF=False)                                  
 
         argo_n['TALK_LIAR'] = (['N_PROF','N_LEVELS'],
-                               np.reshape(np.asarray(results),argo_n.PH_IN_SITU_TOTAL_ADJUSTED.shape))
+                                   np.reshape(np.asarray(results),argo_n.PH_IN_SITU_TOTAL_ADJUSTED.shape))
   
     
         ##### Calculate float pH at 25C, DIC and apply bias corr
@@ -371,7 +379,7 @@ for n in range(start_index,len(argolist)):
                 temperature=argo_n.TEMP_ADJUSTED, 
                 pressure=argo_n.PRES_ADJUSTED, 
                 salinity=argo_n.PSAL_ADJUSTED, 
-                temperature_out=25., #fixed 25C temperature
+                temperature_out=25.*np.ones(argo_n.PRES_ADJUSTED.shape), #fixed 25C temperature
                 pressure_out=argo_n.PRES_ADJUSTED,
                 total_silicate=SI,
                 total_phosphate=PO4,
@@ -383,15 +391,15 @@ for n in range(start_index,len(argolist)):
                 opt_buffers_mode=1,
         )
            
-        argo_n['pH_25C_TOTAL'] = (['N_PROF','N_LEVELS'],results['pH_total_out'])
+        argo_n['pH_25C_TOTAL_ADJUSTED'] = (['N_PROF','N_LEVELS'],results['pH'])
         argo_n['DIC'] = (['N_PROF','N_LEVELS'],results['dic'])  
         argo_n['pCO2'] = (['N_PROF','N_LEVELS'],results['pCO2_out'])  
         
-        #is it necessary to loop through each float profile for co2sys or can we use apply_ufunc instead?
         for p in range(nprof_n):
             
             # skip a profile if pH is above 10.  There seem to be pH's above 10 that causing 
             if any(argo_n.PH_IN_SITU_TOTAL_ADJUSTED[p,:]>10) or all(np.isnan(argo_n.PH_IN_SITU_TOTAL_ADJUSTED[p,:])):
+                'print pH out of range'
                 continue
     
             #apply pH bias correction   
@@ -402,17 +410,18 @@ for n in range(start_index,len(argolist)):
             #if there are valid pressure levels between 1480-1520 db, 
             #calc bias correction only in this depth band, if not, calc correction between 970 and 1520
             if any((argo_n.PRES_ADJUSTED[p,:]>1480) & (argo_n.PRES_ADJUSTED[p,:]<1520)):
-        
+                
                 inds = (argo_n.PRES_ADJUSTED[p,:]>1480) & (argo_n.PRES_ADJUSTED[p,:]<1520)
-                correction = -0.034529*argo_n.pH_25C_TOTAL[p,inds]+0.26709
+                correction = -0.034529*argo_n.pH_25C_TOTAL_ADJUSTED[p,inds]+0.26709
                               
             else:
                 inds = (argo_n.PRES_ADJUSTED[p,:]>970) & (argo_n.PRES_ADJUSTED[p,:]<1520)
-                correction = -0.034529*argo_n.pH_25C_TOTAL[p,inds]+0.26709
-                              
+                correction = -0.034529*argo_n.pH_25C_TOTAL_ADJUSTED[p,inds]+0.26709
+
             if len(correction):
                 argo_n.bias_corr[p] = np.nanmean(correction)
                 argo_n.pH_insitu_corr[p,:] = argo_n.PH_IN_SITU_TOTAL_ADJUSTED[p,:]+argo_n.bias_corr[p]
+                argo_n.pH_25C_corr[p,:] = argo_n.pH_25C_TOTAL_ADJUSTED[p,:]+argo_n.bias_corr[p]
     
         #call CO2sys again to get pCO2 with corrected PH
         results = pyco2.sys(
@@ -423,7 +432,7 @@ for n in range(start_index,len(argolist)):
                 temperature=argo_n.TEMP_ADJUSTED, 
                 pressure=argo_n.PRES_ADJUSTED, 
                 salinity=argo_n.PSAL_ADJUSTED, 
-                temperature_out=25., #fixed 25C temperature
+                temperature_out=25.* np.ones(argo_n.PRES_ADJUSTED.shape), #fixed 25C temperature
                 pressure_out=argo_n.PRES_ADJUSTED,
                 total_silicate=SI,
                 total_phosphate=PO4,
@@ -435,7 +444,7 @@ for n in range(start_index,len(argolist)):
                 opt_buffers_mode=1,
                 )
  
-        argo_n['pCO2_pH_corr'] = (['N_PROF','N_LEVELS'],results['pCO2_out'])  
+        argo_n['pCO2_pH_corr'] = (['N_PROF','N_LEVELS'],results['pCO2'])  
     
     ##### now calc potential density, save, and interpolate data for comparison
     for p in range(nprof_n):
@@ -523,27 +532,18 @@ for n in range(start_index,len(argolist)):
             else: 
                 print('profile data not deep enough to interpolate')
     
-    #save adjusted/processed, non-interpolated data to use for crossovers
-    #could instead save each comparison var as a list of lists that can support different sizes r
-    #rather than write to file?
-    #or just output a dataset with only the relevant variables for crossovers?
-    
-    ###NOTE: currently getting a ValueError in to_netcdf for 1 float (2903176)
-    #clean_dataset(argo_n)
-    #argo_n.to_netcdf(argo_path+str(wmo_n)+'_adjusted.nc')
-    #workaround: create new dataset with relevant crossover variables only
-    argo_n_adjusted = xr.Dataset()
-    argo_n_adjusted['wmo'] = wmo_n
-    argo_n_adjusted['CYCLE_NUMBER'] = (['N_PROF'],argo_n.CYCLE_NUMBER.values)
-    argo_n_adjusted['LONGITUDE'] = (['N_PROF'],argo_n.LONGITUDE.values)
-    argo_n_adjusted['LATITUDE'] = (['N_PROF'],argo_n.LATITUDE.values)
-    argo_n_adjusted['JULD_LOCATION'] = (['N_PROF'],argo_n.JULD_LOCATION.values)
-    argo_n_adjusted['PRES_ADJUSTED'] = (['N_PROF','N_LEVELS'],argo_n.PRES_ADJUSTED.values)
-    for var in var_list_plot:
+    #create new dataset with relevant crossover variables only
+    argo_n_derived = xr.Dataset()
+    argo_n_derived['wmo'] = wmo_n
+    argo_n_derived['CYCLE_NUMBER'] = (['N_PROF'],argo_n.CYCLE_NUMBER.values)
+    argo_n_derived['LONGITUDE'] = (['N_PROF'],argo_n.LONGITUDE.values)
+    argo_n_derived['LATITUDE'] = (['N_PROF'],argo_n.LATITUDE.values)
+    argo_n_derived['JULD_LOCATION'] = (['N_PROF'],argo_n.JULD_LOCATION.values)
+    for var in var_list:
         if var in argo_n.keys():
-            argo_n_adjusted[var] = (['N_PROF','N_LEVELS'],argo_n[var].values)
-    argo_n_adjusted.to_netcdf(argo_path+str(wmo_n)+'_adjusted.nc')
-    #should we add pCO2 to the saved adjusted file?
+            argo_n_derived[var] = (['N_PROF','N_LEVELS'],argo_n[var].values)
+    argo_n_derived.to_netcdf(argo_path_derived+str(wmo_n)+'_derived.nc')
+    #should we add pCO2 to the saved derived file?
     
     #Also save interpolated dataset as one mega Dataset for doing crossovers
     if n == 0:
@@ -554,8 +554,6 @@ for n in range(start_index,len(argolist)):
     #save out argo_interp periodically:
     if n/20==round(n/20):
         argo_interp.to_netcdf(data_dir+'argo_interp_temp.nc')
-     
-
 
 # -
 
@@ -838,108 +836,3 @@ argo_offsets['test_float_latitude'] = (float_offsets[len(var_list_plot)*2+9])
 argo_offsets.to_netcdf(output_dir+'float_offsets.nc')
 
 print('Total number of float crossovers: ' + str(len(float_offsets[len(var_list_plot)*2])))
-# -
-
-# ## Plot crossovers
-
-
-# +
-#now plot histograms of offsets for each main float with crossovers
-fig = plt.figure(figsize=(12,10))
-
-for wmo, group in argo_wmo:
-    #get index all glodap crossovers 
-    g_inds = np.flatnonzero(gdap_offsets[len(var_list_plot)*2] == wmo)
-    #get index of all float crossovers
-    fl_inds = np.flatnonzero(float_offsets[len(var_list_plot)*2] == wmo)
-    
-    if len(g_inds)==0 and len(fl_inds)==0:
-        continue
-    elif len(g_inds)==0:
-        #float crossover only
-        #loop through each variable
-        for idx, var in enumerate(var_list_plot):
-            if len(float_offsets[idx*2]):
-                f_plot = np.array(float_offsets[idx*2])[fl_inds]
-                if not np.all(np.isnan(f_plot)):
-                    axn = plt.subplot(3,3,idx+1)
-                    axn.hist(f_plot,color='r',alpha=0.5)
-                axn.set_title(var)
-        
-        #add crossover location map
-        #main float positions
-        fl_lon = np.array(float_offsets[17])[fl_inds]
-        fl_lat = np.array(float_offsets[19])[fl_inds]
-        g_lon = np.array(gdap_offsets[14])[g_inds]
-        g_lat = np.array(gdap_offsets[16])[g_inds]
-        
-        axn = plt.subplot(3,2,6)
-        axn.plot(group.LONGITUDE,group.LATITUDE,'bo',markersize=10,label='Current float')
-        #test float positions
-        axn.plot(fl_lon,fl_lat,'go',label = 'test floats',markersize=10)
-
-        plt.grid(linestyle=':')
-        plt.legend()
-        plt.savefig(output_dir+str(wmo)+'_v_float.png')
-        plt.clf()
-        
-    elif len(fl_inds)==0:
-        #glodap crossover only
-        #loop through each variable
-        for idx, var in enumerate(var_list_plot):
-            if len(gdap_offsets[idx*2]):
-                axn = plt.subplot(3,3,idx+1)
-                g_plot = np.array(gdap_offsets[idx*2])[g_inds]
-                if not np.all(np.isnan(g_plot)):
-                    axn.hist(g_plot,color='b',alpha=0.5)
-                axn.set_title(var)
-        
-        #add crossover location map
-        #main float positions
-        fl_lon = np.array(float_offsets[17])[fl_inds]
-        fl_lat = np.array(float_offsets[19])[fl_inds]
-        g_lon = np.array(gdap_offsets[14])[g_inds]
-        g_lat = np.array(gdap_offsets[16])[g_inds]
-        
-        axn = plt.subplot(3,2,6)
-        axn.plot(group.LONGITUDE,group.LATITUDE,'bo',markersize=10,label='Current float')
-        #glodap
-        axn.plot(g_lon,g_lat,'mv',label = 'Glodap',markersize=10)
-        
-        plt.grid(linestyle=':')
-        plt.legend()
-        plt.savefig(output_dir+str(wmo)+'_v_glodap.png')
-        plt.clf()
-        
-    else:
-        #loop through each variable
-        for idx, var in enumerate(var_list_plot):
-            if len(float_offsets[idx*2]) and len(gdap_offsets[idx*2]):
-                axn = plt.subplot(3,3,idx+1)
-                #print(np.array(float_offsets[idx]))
-                f_plot = np.array(float_offsets[idx*2])[fl_inds]
-                g_plot = np.array(gdap_offsets[idx*2])[g_inds]
-                if not np.all(np.isnan(g_plot)):
-                    axn.hist(g_plot,color='b',alpha=0.5)
-                if not np.all(np.isnan(f_plot)):
-                    axn.hist(f_plot,color='r',alpha=0.5)
-                axn.set_title(var)
-        
-        #add crossover location map
-        #main float positions
-        fl_lon = np.array(float_offsets[17])[fl_inds]
-        fl_lat = np.array(float_offsets[19])[fl_inds]
-        g_lon = np.array(gdap_offsets[14])[g_inds]
-        g_lat = np.array(gdap_offsets[16])[g_inds]
-        
-        axn = plt.subplot(3,2,6)
-        axn.plot(group.LONGITUDE,group.LATITUDE,'bo',markersize=10,label='Current float')
-        #test float positions
-        axn.plot(fl_lon,fl_lat,'go',label = 'test floats',markersize=10)
-        #glodap
-        axn.plot(g_lon,g_lat,'mv',label = 'Glodap',markersize=10)
-        
-        plt.grid(linestyle=':')
-        plt.legend()
-        plt.savefig(output_dir+str(wmo)+'_v_float_and_glodap.png')
-        plt.clf()
