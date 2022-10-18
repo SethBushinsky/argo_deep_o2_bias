@@ -685,25 +685,28 @@ for wmo, group in argo_wmo:
             #can add additional float metadata variable to list here
     
 
-#convert GLODAP offset lists to xarray Dataset and save to netcdf file
-glodap_offsets = xr.Dataset()
+
+
+
+# +
+#convert GLODAP offset lists to xarray and save to netcdf
+glodap_offsets = xr.Dataset(coords={'N_CROSSOVERS':(['N_CROSSOVERS'],np.arange(len(gdap_offsets[0])))})
 for idx, var in enumerate(var_list_plot):
-    glodap_offsets[var+'_offset'] = (gdap_offsets[idx*2])
-    glodap_offsets[var] = (gdap_offsets[idx*2+1])
+    glodap_offsets[var+'_offset'] = (['N_CROSSOVERS'], gdap_offsets[idx*2])
+    glodap_offsets[var] = (['N_CROSSOVERS'],gdap_offsets[idx*2+1])
     
-glodap_offsets['main_float_wmo'] = (gdap_offsets[len(var_list_plot)*2])
-glodap_offsets['main_float_profile'] = ( gdap_offsets[len(var_list_plot)*2+1])
-glodap_offsets['main_float_juld'] = (gdap_offsets[len(var_list_plot)*2+2])
-glodap_offsets['main_float_longitude'] = (gdap_offsets[len(var_list_plot)*2+3])
-glodap_offsets['glodap_longitude'] = (gdap_offsets[len(var_list_plot)*2+4])
-glodap_offsets['main_float_latitude'] = (gdap_offsets[len(var_list_plot)*2+5])
-glodap_offsets['glodap_latitude'] = (gdap_offsets[len(var_list_plot)*2+6])
+glodap_offsets['main_float_wmo'] = (['N_CROSSOVERS'],gdap_offsets[len(var_list_plot)*2])
+glodap_offsets['main_float_profile'] = (['N_CROSSOVERS'], gdap_offsets[len(var_list_plot)*2+1])
+glodap_offsets['main_float_juld'] = (['N_CROSSOVERS'],gdap_offsets[len(var_list_plot)*2+2])
+glodap_offsets['main_float_longitude'] = (['N_CROSSOVERS'],gdap_offsets[len(var_list_plot)*2+3])
+glodap_offsets['glodap_longitude'] = (['N_CROSSOVERS'],gdap_offsets[len(var_list_plot)*2+4])
+glodap_offsets['main_float_latitude'] = (['N_CROSSOVERS'],gdap_offsets[len(var_list_plot)*2+5])
+glodap_offsets['glodap_latitude'] = (['N_CROSSOVERS'],gdap_offsets[len(var_list_plot)*2+6])
 
 glodap_offsets.to_netcdf(output_dir+'glodap_offsets.nc')
 
 print('Total number of glodap crossovers: ' + str(len(gdap_offsets[len(var_list_plot)*2])))
 # -
-
 
 # ## 4. Compare float - float crossovers
 
