@@ -10,10 +10,14 @@
 
 
 % SOCCOM_float_directory = [home_dir 'Data/ARGO_O2_Floats/Global/GLOBAL_BGC_ARGO/2020_10_23/'];
-SOCCOM_float_directory = [home_dir 'Data/ARGO_O2_Floats/Global/GLOBAL_BGC_ARGO/2020_11_16/'];
+% SOCCOM_float_directory = [home_dir 'Data/ARGO_O2_Floats/Global/GLOBAL_BGC_ARGO/2020_11_16/'];
+% SOCCOM_float_directory = [data_dir 'ARGO_O2_Floats/Global/GLOBAL_BGC_ARGO/2022_08_25/'];
+SOCCOM_float_directory = [data_dir 'Data_Products/BGC_ARGO_GLOBAL/2022_08_25/'];
 
 % load([SOCCOM_float_directory 'Argo_BGC_2020-10-26.mat']);
-load([SOCCOM_float_directory 'Argo_BGC_2020-11-17.mat']);
+% load([SOCCOM_float_directory 'Argo_BGC_2020-11-17.mat']);
+load([SOCCOM_float_directory 'Argo_BGC_2022-09-06.mat']);
+
 %%
 
 
@@ -45,7 +49,8 @@ load([SOCCOM_float_directory 'Argo_BGC_2020-11-17.mat']);
 % end
 
 %%
-gdap = load([home_dir 'Data/Data_Products/GLODAP/GLODAPv2.2020_Merged_Master_File.mat']);
+% gdap = load([home_dir 'Data/Data_Products/GLODAP/GLODAPv2.2020_Merged_Master_File.mat']);
+gdap = load([data_dir 'Data_Products/GLODAP/GLODAPv2.2021_Merged_Master_File.mat']);
 
 clear gdap_SO
 gdap.PDENS = sw_pden(gdap.G2salinity,gdap.G2temperature,gdap.G2pressure, 0);
@@ -95,8 +100,11 @@ for c = 1:length(cruise_numbers)
         temp_S = temp_S_0(~isnan(temp_T_0) & ~isnan(temp_S_0) & ~isnan(temp_P_0));
         temp_P = temp_P_0(~isnan(temp_T_0) & ~isnan(temp_S_0) & ~isnan(temp_P_0));
         
+        try
         gdap_SO.G2MLD(station_index) = mld_dbm(temp_T, temp_S, ...
             temp_P, 0);
+        catch
+        end
         %         clear temp_P temp_P_0 temp_S temp_S_0 temp_T temp_T_0 station_index
     end
     
@@ -124,7 +132,7 @@ gdap_SO.pH_in_situ_total = pHEstimates;
 
 gdap_SO.pH_in_situ_total(isnan(gdap_SO.G2phts25p0))=nan;
 
-%% change Glodap names to Argo names
+%%change Glodap names to Argo names
 name_convert = {'G2longitude' 'LONGITUDE'; 'G2latitude', 'LATITUDE'; 'G2pressure', 'PRES_ADJUSTED'; 'G2temperature', 'TEMP_ADJUSTED'; 'G2salinity', 'PSAL_ADJUSTED';...
     'G2oxygen' 'DOXY_ADJUSTED'; 'G2nitrate' 'NITRATE_ADJUSTED';'G2tco2' 'DIC' ; 'G2talk' 'TALK_LIAR' ; 'G2MLD' 'MLD'; 'G2o2sat' 'o2sat' ; 'G2PTMP' 'PTMP';'pH_in_situ_total' 'PH_IN_SITU_TOTAL_ADJUSTED'};
 
@@ -132,7 +140,7 @@ for g = 1:length(name_convert)
     gdap_SO.(name_convert{g,2}) = gdap_SO.(name_convert{g,1});
     gdap_SO.(name_convert{g,1}) = [];
 end
-%%
+%
 
 % gdap pH 25C
 [DATA,~,~]=CO2SYSSOCCOM_smb(2300.*ones(length(gdap_SO.TEMP_ADJUSTED),1), gdap_SO.PH_IN_SITU_TOTAL_ADJUSTED, ...
@@ -599,7 +607,7 @@ end
 %%  Glodap crossovers
 gdap_fields = fieldnames(gdap_SO);
 
-for q= 544:length(SNs)
+for q= 1:length(SNs)
     %     last=q;
     disp([num2str(q) ' ' SNs{q}])
     
@@ -663,9 +671,12 @@ for q= 544:length(SNs)
     
     % prep offsets to enter glodap data
     for t = 1:length(meta_data)
-        offsets.(SNs{q}).gdap.(meta_data{t}) = [];
+        offsets.(SNs{q}).gdap.([meta_data{t} '_float']) = [];
+        offsets.(SNs{q}).gdap.([meta_data{t} '_gdap']) = [];
+
     end
     for t = 1:length(comp_data)
+        offsets.(SNs{q}).gdap.([comp_data{t} '_offset']) = [];
         offsets.(SNs{q}).gdap.(comp_data{t}) = [];
     end
     
@@ -683,7 +694,6 @@ for q= 544:length(SNs)
         else
             lon_test = temp_gdap.LONGITUDE>=lon_range(:,1) &  temp_gdap.LONGITUDE<=lon_range(:,2);
         end
-        
         
         if sum(lon_test & lat_test)==0
             continue
@@ -755,21 +765,36 @@ for q= 544:length(SNs)
                 temp_val =  Argo.(SNs{q}).(meta_data{md})(p);
                 val_vector = NaN(length(interp_index),1);
                 val_vector(:) = temp_val;
-                offsets.(SNs{q}).gdap.(meta_data{md}) = [offsets.(SNs{q}).gdap.(meta_data{md}) ; val_vector];
+                offsets.(SNs{q}).gdap.([meta_data{md} '_float'])  = ...
+                    [offsets.(SNs{q}).gdap.([meta_data{md} '_float'])  ; val_vector];
+                
+                temp_val =  temp_gdap.(meta_data{md})(gdap_press_index(y));
+                val_vector = NaN(length(interp_index),1);
+                val_vector(:) = temp_val;
+                offsets.(SNs{q}).gdap.([meta_data{md} '_gdap'])  = ...
+                    [offsets.(SNs{q}).gdap.([meta_data{md} '_gdap'])  ; val_vector];
+                
             end
             
             for cd = comp_data_to_run
                 
-                offsets.(SNs{q}).gdap.(comp_data{cd}) = [offsets.(SNs{q}).gdap.(comp_data{cd}) ; interp_val.(comp_data{cd})(interp_index) - temp_gdap.(comp_data{cd})(gdap_press_index(y))];
+                offsets.(SNs{q}).gdap.([comp_data{cd} '_offset']) = [offsets.(SNs{q}).gdap.([comp_data{cd} '_offset']) ; ...
+                    interp_val.(comp_data{cd})(interp_index) - temp_gdap.(comp_data{cd})(gdap_press_index(y))];
                 
+                offsets.(SNs{q}).gdap.(comp_data{cd}) = [offsets.(SNs{q}).gdap.(comp_data{cd}) ; ...
+                    interp_val.(comp_data{cd})(interp_index)];
             end
             
         end
     end
+   
+    disp([SNs{q} ' ' num2str(q/length(SNs)*100) ' % done'])
     
 end
 clear val_vector gdap_index temp_val cd md y p lat_test lon_test t g comp_data_to_run interp_dens interp_index interp_sal interp_temp interp_val
 
+%% 
+save([home_dir 'Work/Projects/2021_07_Float_BGC_QC_NOAA/code/output/temp_Matlab_glodap_offsets.mat'], 'offsets', 'comp_data', 'meta_data');
 %% counting crossovers
 gdap_count.O2 = 0;
 gdap_count.NO3 = 0;
