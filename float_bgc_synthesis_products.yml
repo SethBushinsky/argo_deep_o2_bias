@@ -17,4 +17,4 @@ dependencies:
   - jupytext
   - pip
   - pip:
-    - PyCO2SYS=1.8.1 
+    - PyCO2SYS==1.8.1 
