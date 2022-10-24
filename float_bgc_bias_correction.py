@@ -104,8 +104,8 @@ p_compare_max = 2000
 #crossover distance range
 dist = 50.
 
-#variables to do crossover plot 
-var_list_plot = ['TEMP_ADJUSTED','PSAL_ADJUSTED','DOXY_ADJUSTED','NITRATE_ADJUSTED',
+#variables to do crossovers
+var_list_plot = ['PRES_ADJUSTED','TEMP_ADJUSTED','PSAL_ADJUSTED','DOXY_ADJUSTED','NITRATE_ADJUSTED',
                  'DIC','pH_25C_TOTAL_ADJUSTED','PDENS']
 # -
 
@@ -573,7 +573,7 @@ argo_wmo = argo_interp.groupby('wmo')
 
 #initiate offset list
 #number of additional rows for saving metadata items
-num_meta_items = 7
+num_meta_items = 8
 gdap_offsets =  [[] for _ in range(2*len(var_list_plot)+num_meta_items)]
 
 #iterate over each float & profile
@@ -678,10 +678,11 @@ for wmo, group in argo_wmo:
             gdap_offsets[len(var_list_plot)*2].append(wmo)
             gdap_offsets[len(var_list_plot)*2+1].append(group.profile[n].values)
             gdap_offsets[len(var_list_plot)*2+2].append(group.juld[n].values)
-            gdap_offsets[len(var_list_plot)*2+3].append(group.LONGITUDE[n].values)
-            gdap_offsets[len(var_list_plot)*2+4].append(gdap_match.LONGITUDE[gdap_match.LONGITUDE.index[0]])
-            gdap_offsets[len(var_list_plot)*2+5].append(group.LATITUDE[n].values)
-            gdap_offsets[len(var_list_plot)*2+6].append(gdap_match.LATITUDE[gdap_match.LATITUDE.index[0]])
+            gdap_offsets[len(var_list_plot)*2+3].append(gdap_match.datetime[gdap_match.datetime.index[0]])
+            gdap_offsets[len(var_list_plot)*2+4].append(group.LONGITUDE[n].values)
+            gdap_offsets[len(var_list_plot)*2+5].append(gdap_match.LONGITUDE[gdap_match.LONGITUDE.index[0]])
+            gdap_offsets[len(var_list_plot)*2+6].append(group.LATITUDE[n].values)
+            gdap_offsets[len(var_list_plot)*2+7].append(gdap_match.LATITUDE[gdap_match.LATITUDE.index[0]])
             #can add additional float metadata variable to list here
     
 
