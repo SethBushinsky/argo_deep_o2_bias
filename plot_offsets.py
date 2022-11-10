@@ -94,8 +94,11 @@ noair_cal_combined_list = noair_cal_surf_list+noair_cal_subsurf_list+noair_cal_f
 # +
 #initialise metadata DataArrays
 glodap_offsets['o2_calib_comment'] = xr.DataArray(dims=['N_CROSSOVERS'],coords={'N_CROSSOVERS':range(glodap_offsets.main_float_wmo.shape[0])}).astype(str)
+glodap_offsets['o2_calib_equation'] = xr.DataArray(dims=['N_CROSSOVERS'],coords={'N_CROSSOVERS':range(glodap_offsets.main_float_wmo.shape[0])}).astype(str)
+glodap_offsets['o2_calib_coeff'] = xr.DataArray(dims=['N_CROSSOVERS'],coords={'N_CROSSOVERS':range(glodap_offsets.main_float_wmo.shape[0])}).astype(str)
 glodap_offsets['o2_calib_group'] = xr.DataArray(dims=['N_CROSSOVERS'],coords={'N_CROSSOVERS':range(glodap_offsets.main_float_wmo.shape[0])}).astype(str)
-glodap_offsets['o2_calib_date'] = xr.DataArray(dims=['N_CROSSOVERS'],coords={'N_CROSSOVERS':range(glodap_offsets.main_float_wmo.shape[0])})
+glodap_offsets['o2_calib_drift'] = xr.DataArray(dims=['N_CROSSOVERS'],coords={'N_CROSSOVERS':range(glodap_offsets.main_float_wmo.shape[0])}).astype(str)
+glodap_offsets['o2_calib_date'] = xr.DataArray(dims=['N_CROSSOVERS'],coords={'N_CROSSOVERS':range(glodap_offsets.main_float_wmo.shape[0])}).astype(str)
 glodap_offsets['project_name'] = xr.DataArray(dims=['N_CROSSOVERS'],coords={'N_CROSSOVERS':range(glodap_offsets.main_float_wmo.shape[0])}).astype(str)
 glodap_offsets['plat_type'] = xr.DataArray(dims=['N_CROSSOVERS'],coords={'N_CROSSOVERS':range(glodap_offsets.main_float_wmo.shape[0])}).astype(str)
 glodap_offsets['data_centre'] = xr.DataArray(dims=['N_CROSSOVERS'],coords={'N_CROSSOVERS':range(glodap_offsets.main_float_wmo.shape[0])}).astype(str)
@@ -105,7 +108,7 @@ for i,g in enumerate(glodap_offsets.main_float_wmo):
     #find full float file matching offset
     fn = argo_path + str(g.values) + '_Sprof.nc'
     float_og = xr.open_dataset(fn)
-    
+    print(fn)
     
     #retrieve calibration info
     #get single profile
@@ -114,7 +117,7 @@ for i,g in enumerate(glodap_offsets.main_float_wmo):
     prof_og = float_og.isel(N_PROF=p_index)
     
     #retrieve calibration information
-    #need to add option for multiple calibrations- default to use most recent only for now?
+    #need to add option for multiple calibrations- defaul|t to use most recent only for now?
     #O2 calibration
     #if len(float_og.N_CALIB) >1 :
         #print(str(g.values)+' has more than 1 calibration')
@@ -124,18 +127,26 @@ for i,g in enumerate(glodap_offsets.main_float_wmo):
         cal_str = prof_og.STATION_PARAMETERS.values.astype(str)[0]
         o2_ind = [idx for idx, s in enumerate(cal_str) if 'DOXY' in s]
         if len(o2_ind):
-            o2_cal = prof_og.SCIENTIFIC_CALIB_COMMENT.values.astype(str)[0][-1][o2_ind[0]].squeeze()
-            if not prof_og.SCIENTIFIC_CALIB_DATE[0,-1,o2_ind[0]].values.astype(str):
+            o2_cal = prof_og.SCIENTIFIC_CALIB_COMMENT.values[0][-1][o2_ind[0]].decode("utf-8")
+            o2_eq = prof_og.SCIENTIFIC_CALIB_EQUATION.values[0][-1][o2_ind[0]].decode("utf-8")
+            o2_co = prof_og.SCIENTIFIC_CALIB_COEFFICIENT.values[0][-1][o2_ind[0]].decode("utf-8")
+            if not prof_og.SCIENTIFIC_CALIB_DATE.values[0][-1][o2_ind[0]].decode("utf-8"):
                 #print('no calibration info')
                 o2_calib_date = 'nan'
                 no_cal.append(glodap_offsets.main_float_wmo.values)
             else:
-                o2_calib_date = prof_og.SCIENTIFIC_CALIB_DATE[0,-1,o2_ind[0]]
+                o2_calib_date = prof_og.SCIENTIFIC_CALIB_DATE.values[0][-1][o2_ind[0]].decode("utf-8")
         else:
             o2_cal = 'empty O2 calib comment'
+            o2_eq = 'none'
+            o2_co = 'none'
+            o2_calib_date = 'none'
     else:
         o2_cal = 'no O2'
+        o2_eq = 'none'
+        o2_co = 'none'
         o2_calib_date = 'none'
+        
     
     #group together similar calib comments into one larger group
     if any(substring in o2_cal for substring in bad_cal_list):
@@ -164,6 +175,8 @@ for i,g in enumerate(glodap_offsets.main_float_wmo):
     
     #add metadata to glodap_offset Dataset
     glodap_offsets.o2_calib_comment[i] = o2_cal
+    glodap_offsets.o2_calib_equation[i] = o2_eq
+    glodap_offsets.o2_calib_coeff[i] = o2_co
     glodap_offsets.o2_calib_group[i] = o2_group
     glodap_offsets.o2_calib_drift[i] = o2_group_drift
     glodap_offsets.o2_calib_date[i] = o2_calib_date
@@ -174,18 +187,24 @@ for i,g in enumerate(glodap_offsets.main_float_wmo):
 
 # -
 
+#save offsets with cal info
+glodap_offsets.to_netcdf(output_dir+'glodap_offsets_withcalibration.nc')
+
+
 #create meta groups based on calibration groups (air cal, no air cal, no cal)
 g = glodap_offsets.o2_calib_group.copy(deep=True)
 g = g.where(glodap_offsets.o2_calib_group == 'air cal','not air')
 glodap_offsets['o2_calib_air'] = xr.where(glodap_offsets.o2_calib_group=='bad','no cal',g)
 
-
+# +
+#extract gain from calibration coefficients
+# -
 
 # Group offsets by chosen float metadata and plot histograms
 
 # +
 # which metadata variable to group by
-group_variable = 'o2_calib_air'
+group_variable = 'o2_calib_equation'
 
 
 #iterate through groups to plot offsets by group
@@ -193,6 +212,8 @@ offsets_g = glodap_offsets.groupby(glodap_offsets[group_variable])
 
 plt.figure(figsize=(16,10))
 for n,group in offsets_g:
+    print(n)
+    print(group['DOXY_ADJUSTED_offset'].shape[0])
     #plot histogram
     plt.hist(group['DOXY_ADJUSTED_offset'], bins=np.linspace(-60, 60, 121),label=str(n))
 
