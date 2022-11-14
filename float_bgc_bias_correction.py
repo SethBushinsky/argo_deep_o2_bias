@@ -6,9 +6,9 @@
 #       extension: .py
 #       format_name: light
 #       format_version: '1.5'
-#       jupytext_version: 1.11.3
+#       jupytext_version: 1.14.0
 #   kernelspec:
-#     display_name: Python 3
+#     display_name: Python 3 (ipykernel)
 #     language: python
 #     name: python3
 # ---
@@ -590,6 +590,9 @@ for wmo, group in argo_wmo:
     
     float_count = float_count+1
 
+    # if float_count==20:
+    #    break
+        
     print('Float ' + str(float_count) + ' ' + str(wmo))
     
     #  Find lat-lon limits within dist of float location
@@ -699,10 +702,11 @@ for idx, var in enumerate(var_list_plot):
 glodap_offsets['main_float_wmo'] = (['N_CROSSOVERS'],gdap_offsets[len(var_list_plot)*2])
 glodap_offsets['main_float_profile'] = (['N_CROSSOVERS'], gdap_offsets[len(var_list_plot)*2+1])
 glodap_offsets['main_float_juld'] = (['N_CROSSOVERS'],gdap_offsets[len(var_list_plot)*2+2])
-glodap_offsets['main_float_longitude'] = (['N_CROSSOVERS'],gdap_offsets[len(var_list_plot)*2+3])
-glodap_offsets['glodap_longitude'] = (['N_CROSSOVERS'],gdap_offsets[len(var_list_plot)*2+4])
-glodap_offsets['main_float_latitude'] = (['N_CROSSOVERS'],gdap_offsets[len(var_list_plot)*2+5])
-glodap_offsets['glodap_latitude'] = (['N_CROSSOVERS'],gdap_offsets[len(var_list_plot)*2+6])
+glodap_offsets['datetime'] = (['N_CROSSOVERS'],gdap_offsets[len(var_list_plot)*2+3])
+glodap_offsets['main_float_longitude'] = (['N_CROSSOVERS'],gdap_offsets[len(var_list_plot)*2+4])
+glodap_offsets['glodap_longitude'] = (['N_CROSSOVERS'],gdap_offsets[len(var_list_plot)*2+5])
+glodap_offsets['main_float_latitude'] = (['N_CROSSOVERS'],gdap_offsets[len(var_list_plot)*2+6])
+glodap_offsets['glodap_latitude'] = (['N_CROSSOVERS'],gdap_offsets[len(var_list_plot)*2+7])
 
 glodap_offsets.to_netcdf(output_dir+'glodap_offsets.nc')
 
