@@ -108,7 +108,6 @@ for i,g in enumerate(glodap_offsets.main_float_wmo):
     #find full float file matching offset
     fn = argo_path + str(g.values) + '_Sprof.nc'
     float_og = xr.open_dataset(fn)
-    print(fn)
     
     #retrieve calibration info
     #get single profile
@@ -184,12 +183,17 @@ for i,g in enumerate(glodap_offsets.main_float_wmo):
     glodap_offsets.plat_type[i] = prof_og.PLATFORM_TYPE.values.astype(str)[0]
     glodap_offsets.data_centre[i] = prof_og.DATA_CENTRE.values.astype(str)[0]
 
+#save offsets with cal info
+glodap_offsets.to_netcdf(output_dir+'glodap_offsets_withcalibration.nc')
+    
+
 
 # -
 
-#save offsets with cal info
-glodap_offsets.to_netcdf(output_dir+'glodap_offsets_withcalibration.nc')
+# Group and plot offsets
 
+#load saved offsets
+glodap_offsets = xr.load_dataset(output_dir+'glodap_offsets_withcalibration.nc')
 
 #create meta groups based on calibration groups (air cal, no air cal, no cal)
 g = glodap_offsets.o2_calib_group.copy(deep=True)
@@ -204,7 +208,7 @@ glodap_offsets['o2_calib_air'] = xr.where(glodap_offsets.o2_calib_group=='bad','
 
 # +
 # which metadata variable to group by
-group_variable = 'o2_calib_equation'
+group_variable = 'o2_calib_coeff'
 
 
 #iterate through groups to plot offsets by group
@@ -220,7 +224,7 @@ for n,group in offsets_g:
     #calc mean/median values
     
     plt.xlabel('DOXY Offset')
-    plt.savefig(output_dir + 'Glodap_offsets_doxy_'+str(n)+'.png')
+    plt.savefig(output_dir + 'Glodap_offsets_doxy_'+group_variable+'_'+str(n)+'.png')
     plt.clf()
     
 #plot histogram on same figure
@@ -241,8 +245,10 @@ for n,group in offsets_g:
 
 plt.xlabel('DOXY Offset')
 plt.legend()
-plt.savefig(output_dir + 'Glodap_offsets_doxy_all.png')
+plt.savefig(output_dir + 'Glodap_offsets_doxy_all_'+group_variable+'.png')
 # -
+
+offsets_g
 
 # Plot histograms of all global glodap offsets combined
 
