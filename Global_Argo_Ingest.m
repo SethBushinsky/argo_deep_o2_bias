@@ -38,11 +38,12 @@
 %%
 clear oceanops
 
-float_dir = [home_dir 'Data/ARGO_O2_Floats/Global/GLOBAL_BGC_ARGO/2022_03_10/'];
-files = {'Ocean_Ops_O2_list2', 'Ocean_Ops_pH_list2', 'Ocean_Ops_NO3_list2'};
+float_dir = [data_dir 'Data_Products/BGC_ARGO_GLOBAL/2022_08_25/'];
+
+files = {'Ocean_Ops_O2_list', 'Ocean_Ops_pH_list', 'Ocean_Ops_NO3_list'};
 
 for f = 1:length(files)
-oceanops.(files{f}) = readtable([float_dir files{f} '.csv']);
+    oceanops.(files{f}) = readtable([float_dir files{f} '.csv']);
 end
 %%  generate a list of all SNs
 WMO_list_all = [];
@@ -166,17 +167,17 @@ float_files = dir([float_dir 'Sprof/*.nc']);
 
 for f = 1:length(float_files)
     disp(['Starting ' num2str(f) ' out of ' num2str(length(float_files))])
-uscore_index = strfind(float_files(f).name, '_');
-
-Argo.(['f' float_files(f).name(1:uscore_index(1)-1)]).WMO = str2double(float_files(f).name(1:uscore_index(1)-1));
-
-for p1 = 1:length(parameter_list)
-    try
-    Argo.(['f' float_files(f).name(1:uscore_index(1)-1)]).(parameter_list{p1}) = ncread([float_dir 'Sprof/' float_files(f).name], parameter_list{p1});
-    catch
+    uscore_index = strfind(float_files(f).name, '_');
+    
+    Argo.(['f' float_files(f).name(1:uscore_index(1)-1)]).WMO = str2double(float_files(f).name(1:uscore_index(1)-1));
+    
+    for p1 = 1:length(parameter_list)
+        try
+            Argo.(['f' float_files(f).name(1:uscore_index(1)-1)]).(parameter_list{p1}) = ncread([float_dir 'Sprof/' float_files(f).name], parameter_list{p1});
+        catch
+        end
     end
-end
-clear uscore_index p1
+    clear uscore_index p1
 end
 
 clear float_files f
@@ -202,7 +203,7 @@ for f = 1:length(SNs)
     end
     
     % calculate potential density
-    Argo.(SNs{f}).PDENS = sw_pden(Argo.(SNs{f}).PSAL_ADJUSTED, Argo.(SNs{f}).TEMP_ADJUSTED, Argo.(SNs{f}).PRES_ADJUSTED, 1);
+    Argo.(SNs{f}).PDENS = sw_pden(Argo.(SNs{f}).PSAL_ADJUSTED, Argo.(SNs{f}).TEMP_ADJUSTED, Argo.(SNs{f}).PRES_ADJUSTED, 0);
     
     % sets lon range to 0-360
     Argo.(SNs{f}).LONGITUDE(Argo.(SNs{f}).LONGITUDE<0) = Argo.(SNs{f}).LONGITUDE(Argo.(SNs{f}).LONGITUDE<0) + 360;
@@ -213,7 +214,7 @@ for f = 1:length(SNs)
 end
 
 %% save dataset
-save([float_dir '../Argo_BGC_' datestr(now, 'YYYY-mm-dd')], 'Argo', 'SNs', 'float_dir',  '-V7.3')
+save([float_dir 'Argo_BGC_' datestr(now, 'YYYY-mm-dd')], 'Argo', 'SNs', 'float_dir',  '-V7.3')
 
 %% Calculate a surface / 25 m avg.
 pres_lim = 25;
