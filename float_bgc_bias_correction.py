@@ -6,9 +6,9 @@
 #       extension: .py
 #       format_name: light
 #       format_version: '1.5'
-#       jupytext_version: 1.14.0
+#       jupytext_version: 1.11.3
 #   kernelspec:
-#     display_name: Python 3 (ipykernel)
+#     display_name: Python 3
 #     language: python
 #     name: python3
 # ---
@@ -92,7 +92,7 @@ if not os.path.isdir(argo_path_derived):
 
 # +
 #pressure limits for interpolation
-p_interp_min = 1200 #minimum pressure for float crossover comparison
+p_interp_min = 1050 #minimum pressure for float crossover comparison
 p_interp_max = 2000 #maximum pressure for float crossover comparison
 #pressure levels to interpolate to, every 1db
 p_interp = np.arange(p_interp_min,p_interp_max+1)
@@ -103,6 +103,9 @@ p_compare_max = 2000
 
 #crossover distance range
 dist = 50.
+
+#max density difference to store crossover
+delta_dens = 0.0005
 
 #variables to do crossovers
 var_list_plot = ['PRES_ADJUSTED','TEMP_ADJUSTED','PSAL_ADJUSTED','DOXY_ADJUSTED','NITRATE_ADJUSTED',
@@ -125,6 +128,21 @@ for v in flagvars:
     flag = v+'f'
     naninds = gdap[flag]!=2
     gdap[v][naninds] = np.nan
+
+# +
+#calc potential density from T and S
+#double check calculated sigma0 matches sigma0 in glodap file
+#calc potential density 
+SA = gsw.SA_from_SP(gdap.G2salinity.values,
+                            gdap.G2pressure.values,
+                            gdap.G2longitude.values,
+                            gdap.G2latitude.values)
+
+CT = gsw.CT_from_t(SA,
+                           gdap.G2temperature.values,
+                           gdap.G2pressure.values)
+
+gdap['sigma0_calculated'] = gsw.sigma0(SA,CT)
 
 # +
 ###make into separate function?
@@ -202,7 +220,7 @@ gdap = gdap.rename(columns={'G2longitude':'LONGITUDE', 'G2latitude':'LATITUDE', 
                             'G2temperature':'TEMP_ADJUSTED','G2salinity':'PSAL_ADJUSTED', 
                             'G2oxygen':'DOXY_ADJUSTED','G2nitrate':'NITRATE_ADJUSTED', 'G2tco2':'DIC', 
                             'G2talk':'TALK_LIAR', 'G2MLD':'MLD','G2o2sat':'o2sat', 'G2PTMP':'PTMP', 
-                            'pH_in_situ_total':'PH_IN_SITU_TOTAL_ADJUSTED','G2sigma0':'PDENS'})
+                            'pH_in_situ_total':'PH_IN_SITU_TOTAL_ADJUSTED','sigma0_calculated':'PDENS'})
 
 # ## 2. Apply float bias corrections 
 
@@ -496,8 +514,8 @@ for n in range(start_index,len(argolist)):
             #(greater than minimum comparison pressure)
 
             if len(p100u[~np.isnan(var100u.values)])>1 and \
-                (np.nanmax(p100u[~np.isnan(var100u.values)])>p_compare_min) and \
-                (np.nanmin(p100u[~np.isnan(var100u.values)])<p_compare_max):
+                (np.nanmax(p100u[~np.isnan(var100u.values)])>p_interp_min) and \
+                (np.nanmin(p100u[~np.isnan(var100u.values)])<p_interp_max):
                 
                 #interpolation function
                 f = interpolate.interp1d(p100u[~np.isnan(var100u.values)],var100u[~np.isnan(var100u.values)])
@@ -574,7 +592,7 @@ argo_wmo = argo_interp.groupby('wmo')
 #initiate offset list
 #number of additional rows for saving metadata items
 num_meta_items = 8
-gdap_offsets =  [[] for _ in range(2*len(var_list_plot)+num_meta_items)]
+gdap_offsets =  [[] for _ in range(3*len(var_list_plot)+num_meta_items)]
 
 #iterate over each float & profile
 float_count = 0
@@ -653,13 +671,23 @@ for wmo, group in argo_wmo:
         #find index of interp profile density that most closely matches each glodap match point density
         for m in range(len(match_inds)):
             #if no interpolated density (not deep enough) then move on to next profile
-            if np.all(np.isnan(group.PDENS.values[n,:])):
+            if np.all(np.isnan(group.PDENS.values[n,:])) or np.isnan(gdap_match.PDENS.values[m]):
                 continue
-            dens_ind = np.nanargmin(np.absolute(group.PDENS.values[n,:]-gdap_match.PDENS.values[m]))
+                
+            #calculate density difference and nearest density index
+            dens_diff = np.absolute(group.PDENS.values[n,:]-gdap_match.PDENS.values[m])
+            dens_ind = np.nanargmin(dens_diff)
             
+            #don't use matches if the density difference to the closest matching density value exceeds delta_dens
+            if dens_diff[dens_ind] > delta_dens:
+                continue
+                
             #don't use matches at top/bottom of interpolated vector
             if (dens_ind == 0) or (dens_ind == len(p_interp) -1):
                 continue
+                
+
+                
             #calc offset at the interp profile index for each match for each var to plot 
             #check var is present in both float and glodap
             for idx, var in enumerate(var_list_plot):
@@ -668,49 +696,52 @@ for wmo, group in argo_wmo:
                     offset = group[var][n,dens_ind] - gdap_match[var][gdap_offset_ind]
                     
                     #append to offset list
-                    gdap_offsets[idx*2].append(offset.values)
+                    gdap_offsets[idx*3].append(offset.values)
                     
-                    #also save absoute glodap value at crossover
-                    gdap_offsets[idx*2+1].append(gdap_match[var][gdap_offset_ind])
+                    #also save absolute glodap value at crossover
+                    gdap_offsets[idx*3+1].append(gdap_match[var][gdap_offset_ind])
+                    #save absolute float value at crossover
+                    gdap_offsets[idx*3+2].append(group[var][n,dens_ind])
+                    
                 #append nan if variable is not there so lists all remain same length?
                 else:
-                    gdap_offsets[idx*2].append(np.nan) # changed to gdap_offsets from float_offsets
-                    gdap_offsets[idx*2+1].append(np.nan) # changed to gdap_offsets from float_offsets
+                    gdap_offsets[idx*3].append(np.nan) 
+                    gdap_offsets[idx*3+1].append(np.nan) 
+                    gdap_offsets[idx*3+2].append(np.nan) 
             
             #append metadata to offset list
-            gdap_offsets[len(var_list_plot)*2].append(wmo)
-            gdap_offsets[len(var_list_plot)*2+1].append(group.profile[n].values)
-            gdap_offsets[len(var_list_plot)*2+2].append(group.juld[n].values)
-            gdap_offsets[len(var_list_plot)*2+3].append(gdap_match.datetime[gdap_match.datetime.index[0]])
-            gdap_offsets[len(var_list_plot)*2+4].append(group.LONGITUDE[n].values)
-            gdap_offsets[len(var_list_plot)*2+5].append(gdap_match.LONGITUDE[gdap_match.LONGITUDE.index[0]])
-            gdap_offsets[len(var_list_plot)*2+6].append(group.LATITUDE[n].values)
-            gdap_offsets[len(var_list_plot)*2+7].append(gdap_match.LATITUDE[gdap_match.LATITUDE.index[0]])
+            gdap_offsets[len(var_list_plot)*3].append(wmo)
+            gdap_offsets[len(var_list_plot)*3+1].append(group.profile[n].values)
+            gdap_offsets[len(var_list_plot)*3+2].append(group.juld[n].values)
+            gdap_offsets[len(var_list_plot)*3+3].append(gdap_match.datetime[gdap_match.datetime.index[0]])
+            gdap_offsets[len(var_list_plot)*3+4].append(group.LONGITUDE[n].values)
+            gdap_offsets[len(var_list_plot)*3+5].append(gdap_match.LONGITUDE[gdap_match.LONGITUDE.index[0]])
+            gdap_offsets[len(var_list_plot)*3+6].append(group.LATITUDE[n].values)
+            gdap_offsets[len(var_list_plot)*3+7].append(gdap_match.LATITUDE[gdap_match.LATITUDE.index[0]])
             #can add additional float metadata variable to list here
     
-
-
 
 
 # +
 #convert GLODAP offset lists to xarray and save to netcdf
 glodap_offsets = xr.Dataset(coords={'N_CROSSOVERS':(['N_CROSSOVERS'],np.arange(len(gdap_offsets[0])))})
 for idx, var in enumerate(var_list_plot):
-    glodap_offsets[var+'_offset'] = (['N_CROSSOVERS'], gdap_offsets[idx*2])
-    glodap_offsets[var] = (['N_CROSSOVERS'],gdap_offsets[idx*2+1])
+    glodap_offsets[var+'_offset'] = (['N_CROSSOVERS'], gdap_offsets[idx*3])
+    glodap_offsets[var+'_glodap'] = (['N_CROSSOVERS'],gdap_offsets[idx*3+1])
+    glodap_offsets[var+'_float'] = (['N_CROSSOVERS'],gdap_offsets[idx*3+2])
     
-glodap_offsets['main_float_wmo'] = (['N_CROSSOVERS'],gdap_offsets[len(var_list_plot)*2])
-glodap_offsets['main_float_profile'] = (['N_CROSSOVERS'], gdap_offsets[len(var_list_plot)*2+1])
-glodap_offsets['main_float_juld'] = (['N_CROSSOVERS'],gdap_offsets[len(var_list_plot)*2+2])
-glodap_offsets['datetime'] = (['N_CROSSOVERS'],gdap_offsets[len(var_list_plot)*2+3])
-glodap_offsets['main_float_longitude'] = (['N_CROSSOVERS'],gdap_offsets[len(var_list_plot)*2+4])
-glodap_offsets['glodap_longitude'] = (['N_CROSSOVERS'],gdap_offsets[len(var_list_plot)*2+5])
-glodap_offsets['main_float_latitude'] = (['N_CROSSOVERS'],gdap_offsets[len(var_list_plot)*2+6])
-glodap_offsets['glodap_latitude'] = (['N_CROSSOVERS'],gdap_offsets[len(var_list_plot)*2+7])
+glodap_offsets['main_float_wmo'] = (['N_CROSSOVERS'],gdap_offsets[len(var_list_plot)*3])
+glodap_offsets['main_float_profile'] = (['N_CROSSOVERS'], gdap_offsets[len(var_list_plot)*3+1])
+glodap_offsets['main_float_juld'] = (['N_CROSSOVERS'],gdap_offsets[len(var_list_plot)*3+2])
+glodap_offsets['glodap_datetime'] = (['N_CROSSOVERS'],gdap_offsets[len(var_list_plot)*3+3])
+glodap_offsets['main_float_longitude'] = (['N_CROSSOVERS'],gdap_offsets[len(var_list_plot)*3+4])
+glodap_offsets['glodap_longitude'] = (['N_CROSSOVERS'],gdap_offsets[len(var_list_plot)*3+5])
+glodap_offsets['main_float_latitude'] = (['N_CROSSOVERS'],gdap_offsets[len(var_list_plot)*3+6])
+glodap_offsets['glodap_latitude'] = (['N_CROSSOVERS'],gdap_offsets[len(var_list_plot)*3+7])
 
 glodap_offsets.to_netcdf(output_dir+'glodap_offsets.nc')
 
-print('Total number of glodap crossovers: ' + str(len(gdap_offsets[len(var_list_plot)*2])))
+print('Total number of glodap crossovers: ' + str(len(gdap_offsets[len(var_list_plot)*3])))
 # -
 
 # ## 4. Compare float - float crossovers
