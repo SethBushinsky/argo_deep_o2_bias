@@ -56,6 +56,74 @@ data_dir = 'data/'
 #load saved glodap offsets 
 glodap_offsets = xr.load_dataset(output_dir+'glodap_offsets.nc')
 
+# plot histograms of offsets for each main float with crossovers
+
+# +
+#loop through offsets from each float
+fig = plt.figure(figsize=(8,16))
+
+#group by main float wmo
+offsets_g = glodap_offsets.groupby(glodap_offsets.main_float_wmo)
+
+for n,g in offsets_g:
+    
+    #if doxy_adjusted_offset is nan, skip
+    if np.all(np.isnan(g.DOXY_ADJUSTED_offset.values)):
+        continue
+        
+    #add crossover location map  
+    axn = plt.subplot(5,2,1)
+    axn.plot(g.main_float_longitude,g.main_float_latitude,'g+',markersize=10,label='Current float')
+    #glodap
+    axn.plot(g.glodap_longitude,g.glodap_latitude,'ro',label = 'Glodap',markersize=10)
+        
+    #plot o2 offsets
+    axn = plt.subplot(5,2,2)
+    g_plot = g.DOXY_ADJUSTED_offset
+    g_mean = np.nanmean(g.DOXY_ADJUSTED_offset.values)
+    g_std = np.nanstd(g.DOXY_ADJUSTED_offset.values)
+    axn.hist(g_plot,color='b',alpha=0.5)
+    axn.set_title('DOXY mean %f +/- %f' % (g_mean,g_std))
+
+    #time
+    axn = plt.subplot(5,1,2)
+    axn.plot(g.main_float_juld,g.DOXY_ADJUSTED_offset,'rx')
+    axn.axhline(y=0, color='k', linestyle='--')
+    axn.set_title('Offsets vs float date')
+    
+    axn = plt.subplot(5,1,3)
+    axn.plot(g.glodap_datetime,g.DOXY_ADJUSTED_offset,'rx')
+    axn.axhline(y=0, color='k', linestyle='--')
+    axn.set_title('Offsets vs float date') 
+    
+    #vs pressure 
+    axn = plt.subplot(5,2,7)
+    axn.plot(g.DOXY_ADJUSTED_offset,g.PRES_ADJUSTED_float,'bx')
+    axn.set_title('Float pres vs offset')
+    plt.gca().invert_yaxis()
+    axn.set_ylabel('pres')
+    
+    axn = plt.subplot(5,2,8)
+    axn.plot(g.DOXY_ADJUSTED_offset,g.PRES_ADJUSTED_glodap,'bx')
+    axn.set_title('GDAP pres vs offset')
+    plt.gca().invert_yaxis()
+    
+    #vs density 
+    axn = plt.subplot(5,2,9)
+    axn.plot(g.DOXY_ADJUSTED_offset,g.PDENS_float,'bx')
+    axn.set_title('Float Pdens vs offset')
+    axn.set_ylabel('dens')
+    
+    axn = plt.subplot(5,2,10)
+    axn.plot(g.DOXY_ADJUSTED_offset,g.PDENS_glodap,'bx')
+    axn.set_title('GDAP Pdens vs offset')
+
+    
+    plt.savefig(output_dir+str(g.main_float_wmo.values[0])+'_v_glodap.png')
+    plt.clf()
+  
+# -
+
 # load and process float - glodap offset metadata
 
 # +
@@ -108,7 +176,6 @@ for i,g in enumerate(glodap_offsets.main_float_wmo):
     #find full float file matching offset
     fn = argo_path + str(g.values) + '_Sprof.nc'
     float_og = xr.open_dataset(fn)
-    print(fn)
     
     #retrieve calibration info
     #get single profile
@@ -184,12 +251,17 @@ for i,g in enumerate(glodap_offsets.main_float_wmo):
     glodap_offsets.plat_type[i] = prof_og.PLATFORM_TYPE.values.astype(str)[0]
     glodap_offsets.data_centre[i] = prof_og.DATA_CENTRE.values.astype(str)[0]
 
+#save offsets with cal info
+glodap_offsets.to_netcdf(output_dir+'glodap_offsets_withcalibration.nc')
+    
+
 
 # -
 
-#save offsets with cal info
-glodap_offsets.to_netcdf(output_dir+'glodap_offsets_withcalibration.nc')
+# Group and plot offsets
 
+#load saved offsets
+glodap_offsets = xr.load_dataset(output_dir+'glodap_offsets_withcalibration.nc')
 
 #create meta groups based on calibration groups (air cal, no air cal, no cal)
 g = glodap_offsets.o2_calib_group.copy(deep=True)
@@ -204,7 +276,7 @@ glodap_offsets['o2_calib_air'] = xr.where(glodap_offsets.o2_calib_group=='bad','
 
 # +
 # which metadata variable to group by
-group_variable = 'o2_calib_equation'
+group_variable = 'o2_calib_coeff'
 
 
 #iterate through groups to plot offsets by group
@@ -220,7 +292,7 @@ for n,group in offsets_g:
     #calc mean/median values
     
     plt.xlabel('DOXY Offset')
-    plt.savefig(output_dir + 'Glodap_offsets_doxy_'+str(n)+'.png')
+    plt.savefig(output_dir + 'Glodap_offsets_doxy_'+group_variable+'_'+str(n)+'.png')
     plt.clf()
     
 #plot histogram on same figure
@@ -241,7 +313,7 @@ for n,group in offsets_g:
 
 plt.xlabel('DOXY Offset')
 plt.legend()
-plt.savefig(output_dir + 'Glodap_offsets_doxy_all.png')
+plt.savefig(output_dir + 'Glodap_offsets_doxy_all_'+group_variable+'.png')
 # -
 
 # Plot histograms of all global glodap offsets combined
@@ -276,7 +348,7 @@ plt.xlabel('NITRATE Offset')
 plt.savefig(output_dir + 'Glodap_offsets_nitrate_plus_minus_400.png')
 
 
-# Now plot histograms of offsets for each main float with crossovers
+# plot histograms of offsets for each main float with crossovers
 
 # +
 #load saved argo_interp data 

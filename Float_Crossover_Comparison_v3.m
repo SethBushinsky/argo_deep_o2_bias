@@ -19,7 +19,6 @@ SOCCOM_float_directory = [data_dir 'Data_Products/BGC_ARGO_GLOBAL/2022_08_25/'];
 % load([SOCCOM_float_directory 'Argo_BGC_2022-09-06.mat']);
 load([SOCCOM_float_directory 'Argo_BGC_2022-11-16.mat']);
 
-%%
 % gdap = load([home_dir 'Data/Data_Products/GLODAP/GLODAPv2.2020_Merged_Master_File.mat']);
 gdap = load([data_dir 'Data_Products/GLODAP/GLODAPv2.2021_Merged_Master_File.mat']);
 
@@ -46,7 +45,7 @@ for g = 1:length(gdap_fields_w_flags)
     temp_data(gdap.([gdap_fields_w_flags{g} 'f'])~=2) = nan;
     
     gdap_SO.(gdap_fields_w_flags{g}) =temp_data(SO_gdap_index);
-    
+
 end
 clear g SO_gdap_index temp_data
 gdap_SO.G2MLD = NaN(size(gdap_SO.GMT_Matlab));
@@ -93,7 +92,7 @@ clear gdap
 Coordinates = [gdap_SO.G2longitude gdap_SO.G2latitude, gdap_SO.G2pressure];
 
 Measurements = [gdap_SO.G2salinity, gdap_SO.G2temperature, gdap_SO.G2nitrate, gdap_SO.G2oxygen];
-    
+
 MeasIDVec = [1 7 3 6];
 
 [pHEstimates,UncertaintyEstimates,MinUncertaintyEquation]= ...
@@ -123,7 +122,6 @@ gdap_SO.pH_25C_TOTAL = DATA(:,37);
 gdap_SO.pH_25C_TOTAL(isnan(gdap_SO.G2phts25p0))=nan;
 
 
-%%
 qc_data_fields = {'TEMP_ADJUSTED', 'PSAL_ADJUSTED', 'DOXY_ADJUSTED', 'NITRATE_ADJUSTED',  'PRES_ADJUSTED'};
 
 
@@ -163,11 +161,11 @@ for f = last:length(SNs)
 %     end
     
    if isfield(Argo.(SNs{f}), 'PH_IN_SITU_TOTAL_ADJUSTED') && sum(~isnan(reshape(Argo.(SNs{f}).PH_IN_SITU_TOTAL_ADJUSTED,[],1)))~=0
-  
-        
+
+
 %        % calculate potential temperature   
 %        Argo.(SNs{f}).PTMP = sw_ptmp(Argo.(SNs{f}).PSAL_ADJUSTED, Argo.(SNs{f}).TEMP_ADJUSTED, Argo.(SNs{f}).PRES_ADJUSTED, 1);
-% 
+%
 
        % Apply bias correction
        Argo.(SNs{f}).pH_insitu_corr = NaN(size(Argo.(SNs{f}).PH_IN_SITU_TOTAL_ADJUSTED));
@@ -224,7 +222,7 @@ for f = last:length(SNs)
            disp(['Profile ' num2str( p) ' of ' num2str(length(Argo.(SNs{f}).GMT_Matlab))])
            
            % Calculate Alkalinity
-           
+
 %            Coordinates = [Argo.(SNs{f}).LONGITUDE(p).*ones(size(Argo.(SNs{f}).PRES_ADJUSTED(p,:)))', ...
 %                Argo.(SNs{f}).LATITUDE(p).*ones(size(Argo.(SNs{f}).PRES_ADJUSTED(p,:)))', Argo.(SNs{f}).PRES_ADJUSTED(p,:)'];
 %            
@@ -242,7 +240,7 @@ for f = last:length(SNs)
 %            
 %            Argo.(SNs{f}).TALK_LIAR(p,:) = AlkalinityEstimates;
 
-           
+
            % Calculate pH 25C without a bias correction
            
            [DATA,~,~]=CO2SYSSOCCOM(Argo.(SNs{f}).TALK_LIAR(p,:), Argo.(SNs{f}).PH_IN_SITU_TOTAL_ADJUSTED(p,:) , ...
@@ -589,12 +587,14 @@ for q= last:length(SNs)
     end
 end
 
+
 %%  Glodap crossovers
 c_map = brewermap(6, 'Set1');
 
 gdap_fields = fieldnames(gdap_SO);
 plot_on=0;
 plot_final=1;
+
 
 var_to_plot = 'DOXY_ADJUSTED';
 c_p = 3;
@@ -904,6 +904,7 @@ for q= 137:length(SNs)
         end
         
     end
+
     
     if isempty(offsets.(SNs{q}).gdap.GMT_Matlab_float)
         continue
@@ -978,11 +979,11 @@ for q= 137:length(SNs)
    
    disp([SNs{q} ' ' num2str(q/length(SNs)*100) ' % done'])
 
+
 end
 %%
 clear val_vector gdap_index temp_val cd md y p lat_test lon_test t g comp_data_to_run interp_dens interp_index interp_sal interp_temp interp_val
 
-%% 
 save([home_dir 'Work/Projects/2021_07_Float_BGC_QC_NOAA/code/output/temp_Matlab_glodap_offsets.mat'], 'offsets', 'comp_data', 'meta_data');
 %% counting crossovers
 gdap_count.O2 = 0;
@@ -1170,9 +1171,10 @@ for q = last: length(SNs)
 end
 
 
-%% assembling data for map plots
+% + magic_args="assembling data for map plots"
 clear plotall
 off_SNs = fieldnames(offsets);
+% -
 
 argo_on = 1;
 gdap_on = 1;
@@ -1366,7 +1368,7 @@ plot(d2, x, y_norm*num_pts*.3, 'r', 'linewidth', 2)
 print(gcf, '-dpng', '-r400', [Plot_dir '../' plot_filename '.png' ])
 
 
-%% Looking for regions with lots of data for long-term changes
+% % Looking for regions with lots of data for long-term changes
 
 lat_range = -70:2:70;
 lon_range = 0:2:360;
@@ -1398,7 +1400,7 @@ for lo = 1:length(lon_range)-1
     end
 end
 
-%%
+% %
 
 grid_count.both =  zeros(length(lon_range), length(lat_range));
 
@@ -1406,7 +1408,6 @@ grid_count.both(grid_count.argo>10) = grid_count.both(grid_count.argo>10) + 1;
 
 grid_count.both(grid_count.gdap>10) = grid_count.both(grid_count.gdap>10) + 1;
 
-%%
 coast = load('coast');
 
 coast.long_360 = coast.long;
@@ -1456,7 +1457,7 @@ for r= 1:size(RRs,1)
     
     plot(d3, [regions.(RRs{r}).LONGITUDE(1) regions.(RRs{r}).LONGITUDE(2) regions.(RRs{r}).LONGITUDE(2) regions.(RRs{r}).LONGITUDE(1) regions.(RRs{r}).LONGITUDE(1)], ...
         [regions.(RRs{r}).LATITUDE(1) regions.(RRs{r}).LATITUDE(1) regions.(RRs{r}).LATITUDE(2) regions.(RRs{r}).LATITUDE(2) regions.(RRs{r}).LATITUDE(1)], 'k', 'linewidth', 2)
-    
+
 end
 %% find data within geographic ranges, collect all info
 clear r_prop
@@ -1510,8 +1511,8 @@ for r = 3%1:length(RRs)
     for c = 1:length(comp_data)
         r_prop.(RRs{r}).gdap.(comp_data{c}) =  gdap_SO.(comp_data{c})(gdap_index);
     end
-    
-    
+
+
 end
 %% monthly means
 DS = {'argo';'gdap'};
@@ -1557,7 +1558,7 @@ for d = 1:length( monthly_date)
     end
 end
 
-%% Calculate SPICE
+% % Calculate SPICE
 
 for r = 1:length(RRs)
     for t = 1:2
@@ -1572,7 +1573,6 @@ plot(r_prop.SEPac.argo.LONGITUDE, r_prop.SEPac.argo.LATITUDE, 'x')
 hold on
 plot(r_prop.SEPac.gdap.LONGITUDE, r_prop.SEPac.gdap.LATITUDE, 'or')
 
-%%
 % pres_bin = [300 1000];
 r =2;
 dens_bin = 27.3:.01:27.55; % 10 m is ~.01 kg/m3
@@ -1644,7 +1644,7 @@ for t = 1:length(DS)
     plot(d3, r_prop.(RRs{r}).(DS{t}).GMT_Matlab(index),  r_prop.(RRs{r}).(DS{t}).DOXY_ADJUSTED(index), 'marker', symbols{t}, 'linestyle', 'none', 'markerfacecolor', colors(t+1,:), 'color', colors(t+1,:), 'markersize', marker_size)
     plot(d5, r_prop.(RRs{r}).(DS{t}).GMT_Matlab(index),  r_prop.(RRs{r}).(DS{t}).NITRATE_ADJUSTED(index), 'marker', symbols{t}, 'linestyle', 'none', 'markerfacecolor', colors(t+1,:), 'color', colors(t+1,:), 'markersize', marker_size)
     l_d(t) =  plot(d7, r_prop.(RRs{r}).(DS{t}).GMT_Matlab(index),  r_prop.(RRs{r}).(DS{t}).DIC(index), 'marker', symbols{t}, 'linestyle', 'none', 'markerfacecolor', colors(t+1,:), 'color', colors(t+1,:), 'markersize', marker_size);
-    
+
 end
 
 set(d3, 'xtick', datenum(1990:5:2020,1,1))
@@ -1663,10 +1663,11 @@ ylabel(d7, '\mumol kg^-^1')
 print(gcf, '-dpng', '-r400', [Plot_dir '../' plot_filename '.png' ])
 
 
-%% monthly means
+% + magic_args="monthly means"
 colors = brewermap(3,'Set1');
 r =3;
 dens_bin = [27.34 27.35];
+% -
 
 
 plot_filename = [RRs{r} '_example_BGC_Change_monthly' num2str(dens_bin(1)) '_to_' num2str(dens_bin(2))];
@@ -1686,13 +1687,13 @@ marker_size = 8;
 
 l_d = NaN(2,1);
 for t = 1:length(DS)
-    
+
 %     index = r_prop.(RRs{r}).(DS{t}).PDENS-1000>= dens_bin(p) & r_prop.(RRs{r}).(DS{t}).PDENS-1000<= dens_bin(p+1);
-    
+
     errorbar(d3, r_prop.(RRs{r}).(DS{t}).avg.GMT_Matlab,  r_prop.(RRs{r}).(DS{t}).avg.DOXY_ADJUSTED(:,1), r_prop.(RRs{r}).(DS{t}).avg.DOXY_ADJUSTED(:,2),'marker', symbols{t}, 'linestyle', 'none', 'markerfacecolor', colors(t+1,:), 'color', colors(t+1,:), 'markersize', marker_size)
     errorbar(d5, r_prop.(RRs{r}).(DS{t}).avg.GMT_Matlab,  r_prop.(RRs{r}).(DS{t}).avg.NITRATE_ADJUSTED(:,1), r_prop.(RRs{r}).(DS{t}).avg.NITRATE_ADJUSTED(:,2),'marker', symbols{t}, 'linestyle', 'none', 'markerfacecolor', colors(t+1,:), 'color', colors(t+1,:), 'markersize', marker_size)
     l_d(t) =  errorbar(d7, r_prop.(RRs{r}).(DS{t}).avg.GMT_Matlab,  r_prop.(RRs{r}).(DS{t}).avg.DIC(:,1), r_prop.(RRs{r}).(DS{t}).avg.DIC(:,2),'marker', symbols{t}, 'linestyle', 'none', 'markerfacecolor', colors(t+1,:), 'color', colors(t+1,:), 'markersize', marker_size);
-    
+
 end
 
 set(d3, 'xtick', datenum(1990:5:2020,1,1))
@@ -1712,7 +1713,7 @@ print(gcf, '-dpng', '-r400', [Plot_dir '../' plot_filename '.png' ])
 print(gcf, '-dpdf', '-r400', [Plot_dir '../' plot_filename '.pdf' ])
 
 
-%% for each float, plot the mean o2 offset for glodap vs the mean NO3 offset
+% + magic_args="for each float, plot the mean o2 offset for glodap vs the mean NO3 offset"
 clf
 subplot(1,1,1); hold on; grid on
 for f = 1:length(off_SNs)
