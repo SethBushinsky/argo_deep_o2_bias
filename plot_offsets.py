@@ -58,14 +58,15 @@ glodap_offsets = xr.load_dataset(output_dir+'glodap_offsets.nc')
 
 # plot histograms of offsets for each main float with crossovers
 
+#group by main float wmo
+offsets_g = glodap_offsets.groupby(glodap_offsets.main_float_wmo)
+
 # +
 #loop through offsets from each float
 fig = plt.figure(figsize=(8,16))
 
-#group by main float wmo
-offsets_g = glodap_offsets.groupby(glodap_offsets.main_float_wmo)
-
 for n,g in offsets_g:
+    ncross = len(g.DOXY_ADJUSTED_offset)
     
     #if doxy_adjusted_offset is nan, skip
     if np.all(np.isnan(g.DOXY_ADJUSTED_offset.values)):
@@ -75,8 +76,10 @@ for n,g in offsets_g:
     axn = plt.subplot(5,2,1)
     axn.plot(g.main_float_longitude,g.main_float_latitude,'g+',markersize=10,label='Current float')
     #glodap
-    axn.plot(g.glodap_longitude,g.glodap_latitude,'ro',label = 'Glodap',markersize=10)
-        
+    glodap_lon = xr.where(g.glodap_longitude<0,g.glodap_longitude+360.,g.glodap_longitude)
+    axn.plot(glodap_lon,g.glodap_latitude,'ro',label = 'Glodap',markersize=10)
+    axn.set_title('N crossovers: %d' % ncross)
+    
     #plot o2 offsets
     axn = plt.subplot(5,2,2)
     g_plot = g.DOXY_ADJUSTED_offset
@@ -136,8 +139,8 @@ bad_cal_list = ['Sensor issue','out of order','Bad data','Biofouling','unadjusta
 no_cal_list = ['no adjustment','No QC','none','not applicable']
 
 #air cal
-air_cal_list = ['DOXY_ADJUSTED corrected using co','SVU Foil','Partial pressure','Bittig','Adjusted with SAGE02 using co',
-                'Adjusted with SAGE02 with in-air',
+air_cal_list = ['DOXY_ADJUSTED corrected using co','SVU Foil','Partial pressure','Bittig',
+                'Adjusted with SAGE02 using co','Adjusted with SAGE02 with in-air',
                 'PPOX converted from DOXY','G determined from float measure']
 #no air cal
 noair_cal_surf_list = ['DOXY_ADJUSTED is computed from','DOXY_ADJUSTED is estimated from',
@@ -254,8 +257,6 @@ for i,g in enumerate(glodap_offsets.main_float_wmo):
 #save offsets with cal info
 glodap_offsets.to_netcdf(output_dir+'glodap_offsets_withcalibration.nc')
     
-
-
 # -
 
 # Group and plot offsets
@@ -276,7 +277,7 @@ glodap_offsets['o2_calib_air'] = xr.where(glodap_offsets.o2_calib_group=='bad','
 
 # +
 # which metadata variable to group by
-group_variable = 'o2_calib_coeff'
+group_variable = 'o2_calib_comment'
 
 
 #iterate through groups to plot offsets by group
@@ -286,6 +287,8 @@ plt.figure(figsize=(16,10))
 for n,group in offsets_g:
     print(n)
     print(group['DOXY_ADJUSTED_offset'].shape[0])
+    #print equations associated with comment
+    print(np.unique(group['o2_calib_equation'].values))
     #plot histogram
     plt.hist(group['DOXY_ADJUSTED_offset'], bins=np.linspace(-60, 60, 121),label=str(n))
 
@@ -295,6 +298,9 @@ for n,group in offsets_g:
     plt.savefig(output_dir + 'Glodap_offsets_doxy_'+group_variable+'_'+str(n)+'.png')
     plt.clf()
     
+
+
+# +
 #plot histogram on same figure
 plt.figure(figsize=(16,10))
 for n,group in offsets_g:

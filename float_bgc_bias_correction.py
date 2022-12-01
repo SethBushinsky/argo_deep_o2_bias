@@ -106,6 +106,8 @@ dist = 50.
 
 #max density difference to store crossover
 delta_dens = 0.0005
+#max spice difference to store crossover
+delta_spice = 0.02
 
 #variables to do crossovers
 var_list_plot = ['PRES_ADJUSTED','TEMP_ADJUSTED','PSAL_ADJUSTED','DOXY_ADJUSTED','NITRATE_ADJUSTED',
@@ -143,6 +145,9 @@ CT = gsw.CT_from_t(SA,
                            gdap.G2pressure.values)
 
 gdap['sigma0_calculated'] = gsw.sigma0(SA,CT)
+
+#calculate spice as well
+gdap['spice'] = gsw.spiciness0(SA,CT)
 
 # +
 ###make into separate function?
@@ -239,7 +244,8 @@ bgc_data_fields = ['DOXY_ADJUSTED', 'NITRATE_ADJUSTED', 'PH_IN_SITU_TOTAL_ADJUST
 
 #variables to do crossover calculation
 var_list = ['TEMP_ADJUSTED', 'PSAL_ADJUSTED', 'DOXY_ADJUSTED', 'NITRATE_ADJUSTED', 'PH_IN_SITU_TOTAL_ADJUSTED',
-            'pH_25C_TOTAL_ADJUSTED', 'pH_25C_corr', 'PDENS', 'PRES_ADJUSTED', 'DIC','TALK_LIAR','pCO2','pCO2_pH_corr']
+            'pH_25C_TOTAL_ADJUSTED', 'pH_25C_corr', 'PDENS', 'spice', 'PRES_ADJUSTED', 'DIC','TALK_LIAR',
+            'pCO2','pCO2_pH_corr']
 
 #if append data is set to 1, reads in argo_interp_temp.nc which contains prior argo_interp array, 
 #compare wmo numbers between argolist and the wmo numbers in argo_interp, and continues on processing 
@@ -305,6 +311,8 @@ for n in range(start_index,len(argolist)):
     
     argo_n['PDENS'] = (['N_PROF','N_LEVELS'],np.empty(argo_n.PRES_ADJUSTED.shape)) #nprof x nlevel
     argo_n.PDENS[:] = np.nan
+    argo_n['spice'] = (['N_PROF','N_LEVELS'],np.empty(argo_n.PRES_ADJUSTED.shape)) #nprof x nlevel
+    argo_n.spice[:] = np.nan
     
     #initialise interpolated dataset
     nan_interp = np.empty((nprof_n,p_interp.shape[0]))
@@ -480,7 +488,7 @@ for n in range(start_index,len(argolist)):
                            argo_n.PRES_ADJUSTED[p,:].values)
 
         argo_n['PDENS'][p,:] = gsw.sigma0(SA,CT)
-        
+        argo_n['spice'][p,:] = gsw.spiciness0(SA,CT)
 
         #for each profile get pressure values >100db
         p100 = p_prof[p_prof>100.].values
@@ -686,8 +694,13 @@ for wmo, group in argo_wmo:
             if (dens_ind == 0) or (dens_ind == len(p_interp) -1):
                 continue
                 
-
-                
+            ##optional: add spice criteria
+            spice_diff = group.spice.values[n,dens_ind]-gdap_match.spice.values[m]
+            
+            #don't use matches if spice difference exceeds delta_spice
+            if spice_diff > delta_spice:
+                continue
+            
             #calc offset at the interp profile index for each match for each var to plot 
             #check var is present in both float and glodap
             for idx, var in enumerate(var_list_plot):
@@ -713,12 +726,15 @@ for wmo, group in argo_wmo:
             gdap_offsets[len(var_list_plot)*3].append(wmo)
             gdap_offsets[len(var_list_plot)*3+1].append(group.profile[n].values)
             gdap_offsets[len(var_list_plot)*3+2].append(group.juld[n].values)
-            gdap_offsets[len(var_list_plot)*3+3].append(gdap_match.datetime[gdap_match.datetime.index[0]])
+            gdap_offsets[len(var_list_plot)*3+3].append(gdap_match.datetime.values[m])
             gdap_offsets[len(var_list_plot)*3+4].append(group.LONGITUDE[n].values)
-            gdap_offsets[len(var_list_plot)*3+5].append(gdap_match.LONGITUDE[gdap_match.LONGITUDE.index[0]])
+            gdap_offsets[len(var_list_plot)*3+5].append(gdap_match.LONGITUDE.values[m])
             gdap_offsets[len(var_list_plot)*3+6].append(group.LATITUDE[n].values)
-            gdap_offsets[len(var_list_plot)*3+7].append(gdap_match.LATITUDE[gdap_match.LATITUDE.index[0]])
+            gdap_offsets[len(var_list_plot)*3+7].append(gdap_match.LATITUDE.values[m])
             #can add additional float metadata variable to list here
+    
+    #plot profiles and offsets to check density match up
+    #plt.subplots(4,1,1)
     
 
 
