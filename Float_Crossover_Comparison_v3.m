@@ -87,7 +87,7 @@ gdap_SO.G2PTMP = sw_ptmp(gdap_SO.G2salinity, gdap_SO.G2temperature, gdap_SO.G2pr
 gdap_SO.G2deltaO2 = gdap_SO.G2oxygen - gdap_SO.G2o2sat;
 
 clear gdap
-%% calculate LIPHR pH at Glodap points below 1480 m and above 2020m
+%% not running for now -  calculate LIPHR pH at Glodap points below 1480 m and above 2020m
 
 Coordinates = [gdap_SO.G2longitude gdap_SO.G2latitude, gdap_SO.G2pressure];
 
@@ -102,7 +102,7 @@ gdap_SO.pH_in_situ_total = pHEstimates;
 
 gdap_SO.pH_in_situ_total(isnan(gdap_SO.G2phts25p0))=nan;
 
-%%change Glodap names to Argo names
+%% change Glodap names to Argo names
 name_convert = {'G2longitude' 'LONGITUDE'; 'G2latitude', 'LATITUDE'; 'G2pressure', 'PRES_ADJUSTED'; 'G2temperature', 'TEMP_ADJUSTED'; 'G2salinity', 'PSAL_ADJUSTED';...
     'G2oxygen' 'DOXY_ADJUSTED'; 'G2nitrate' 'NITRATE_ADJUSTED';'G2tco2' 'DIC' ; 'G2talk' 'TALK_LIAR' ; 'G2MLD' 'MLD'; 'G2o2sat' 'o2sat' ; 'G2PTMP' 'PTMP';'pH_in_situ_total' 'PH_IN_SITU_TOTAL_ADJUSTED'};
 
@@ -110,7 +110,7 @@ for g = 1:length(name_convert)
     gdap_SO.(name_convert{g,2}) = gdap_SO.(name_convert{g,1});
     gdap_SO.(name_convert{g,1}) = [];
 end
-%
+%% - skip for now
 
 % gdap pH 25C
 [DATA,~,~]=CO2SYSSOCCOM_smb(2300.*ones(length(gdap_SO.TEMP_ADJUSTED),1), gdap_SO.PH_IN_SITU_TOTAL_ADJUSTED, ...
@@ -287,6 +287,28 @@ comp_data = {'TEMP_ADJUSTED', 'PSAL_ADJUSTED', 'DOXY_ADJUSTED', 'NITRATE_ADJUSTE
 plot_on=0;
 last = 1;
 interp_press_range = 1200:1:2001;
+
+%% while testing comparisons b/t python and matlab, only load SNs that are in the python glodap_offsets nc file:
+
+
+gdap_offsets.info = ncinfo([project_dir 'output/glodap_offsets.nc']);
+
+for v = 1:length(gdap_offsets.info.Variables)
+    gdap_offsets.(gdap_offsets.info.Variables(v).Name) = ncread([project_dir 'output/glodap_offsets.nc'], ...
+        gdap_offsets.info.Variables(v).Name);
+end
+
+list_python_wmos = unique(gdap_offsets.main_float_wmo);
+
+% make an alternate list of float SNs:
+
+orig_SNs = SNs;
+
+SNs = cell(length(list_python_wmos),1);
+
+for f = 1:length(list_python_wmos)
+    SNs{f} = ['f' num2str(list_python_wmos(f))];
+end
 %%
 
 for q= last:length(SNs) 
@@ -599,7 +621,11 @@ plot_final=1;
 var_to_plot = 'DOXY_ADJUSTED';
 c_p = 3;
 
-for q= 137:length(SNs)
+[X_S, Y_T] = meshgrid(33:.1:36, -2:.5:16);
+dens_grid = sw_pden(X_S, Y_T, 1500, 1)-1000;
+
+
+for q= 1:length(SNs)
     %     last=q;
     
     disp([num2str(q) ' ' SNs{q}])
@@ -922,6 +948,7 @@ for q= 137:length(SNs)
        plot(offsets.(SNs{q}).gdap.LONGITUDE_float, offsets.(SNs{q}).gdap.LATITUDE_float, '+', 'color', c_map(3,:))
        plot(offsets.(SNs{q}).gdap.LONGITUDE_gdap, offsets.(SNs{q}).gdap.LATITUDE_gdap, 'o', 'color', c_map(5,:))
        
+       title(SNs{q}(2:end))
        subplot(5,3,2); hold on
        histogram(offsets.(SNs{q}).gdap.([comp_data{c_p} '_offset']))
        title([comp_data{c_p}(1:4) ' mean ' num2str(nanmean(offsets.(SNs{q}).gdap.([comp_data{c_p} '_offset'])),2) ...
@@ -973,6 +1000,33 @@ for q= 137:length(SNs)
        plot(offsets.(SNs{q}).gdap.([comp_data{c_p} '_offset']), offsets.(SNs{q}).gdap.PDENS_gdap, 'x');
        title('GDAP PDENS vs offset')
        
+
+       T_lims = [min([offsets.(SNs{q}).gdap.TEMP_ADJUSTED_float; offsets.(SNs{q}).gdap.TEMP_ADJUSTED_gdap]) max([offsets.(SNs{q}).gdap.TEMP_ADJUSTED_float; offsets.(SNs{q}).gdap.TEMP_ADJUSTED_gdap])];
+       S_lims = [min([offsets.(SNs{q}).gdap.PSAL_ADJUSTED_float; offsets.(SNs{q}).gdap.PSAL_ADJUSTED_gdap]) max([offsets.(SNs{q}).gdap.PSAL_ADJUSTED_float; offsets.(SNs{q}).gdap.PSAL_ADJUSTED_gdap])];
+
+       subplot(5,3,12)
+       hold on
+                     contour(X_S, Y_T, dens_grid, 'ShowText', 'off', 'levellist', 24.1:.01:29, 'color', [.6 .6 .6]);
+
+%        contour(X_S, Y_T, dens_grid, 'k', 'ShowText', 'on');
+scatter(offsets.(SNs{q}).gdap.PSAL_ADJUSTED_float, offsets.(SNs{q}).gdap.TEMP_ADJUSTED_float, 20, offsets.(SNs{q}).gdap.([comp_data{c_p} '_offset']), 'filled')
+colorbar
+set(gca, 'xlim', S_lims, 'ylim', T_lims)
+title('Offsets plotted w/ float T and S')
+caxis([nanmean(offsets.(SNs{q}).gdap.([comp_data{c_p} '_offset']))-2*nanstd(offsets.(SNs{q}).gdap.([comp_data{c_p} '_offset'])) ...
+    nanmean(offsets.(SNs{q}).gdap.([comp_data{c_p} '_offset']))+ 2*nanstd(offsets.(SNs{q}).gdap.([comp_data{c_p} '_offset']))])
+subplot(5,3,15)
+hold on
+contour(X_S, Y_T, dens_grid, 'ShowText', 'off', 'levellist', 24.1:.01:29, 'color', [.6 .6 .6]);
+%        contour(X_S, Y_T, dens_grid, 'k', 'ShowText', 'on');
+scatter(offsets.(SNs{q}).gdap.PSAL_ADJUSTED_gdap, offsets.(SNs{q}).gdap.TEMP_ADJUSTED_gdap, 20, offsets.(SNs{q}).gdap.([comp_data{c_p} '_offset']), 'filled')
+colorbar
+set(gca, 'xlim', S_lims, 'ylim', T_lims)
+
+title('Offsets plotted w/ gdap T and S')
+caxis([nanmean(offsets.(SNs{q}).gdap.([comp_data{c_p} '_offset']))-2*nanstd(offsets.(SNs{q}).gdap.([comp_data{c_p} '_offset'])) ...
+    nanmean(offsets.(SNs{q}).gdap.([comp_data{c_p} '_offset']))+ 2*nanstd(offsets.(SNs{q}).gdap.([comp_data{c_p} '_offset']))])
+
        plot_filename = [SNs{q}(2:end) '_' comp_data{c_p}];
        print(gcf, '-dpng', '-r200', [Plot_dir '/' plot_filename '_v2.png' ])
    end

@@ -33,7 +33,7 @@ end
 c_map = brewermap(6, 'Set1');
 
 Plot_dir = [project_dir '../plots_matlab/offset_comparison/'];
-for w = 1:length(list_python_wmos)
+for w = 2%:length(list_python_wmos)
     wmo_search = double(list_python_wmos(w));
     python_index = gdap_offsets.main_float_wmo==wmo_search;
     
@@ -48,14 +48,18 @@ for w = 1:length(list_python_wmos)
         set(gcf,'PaperSize',[paper_w paper_h],'PaperPosition', [0 0 paper_w paper_h]);
         
         for c = 1:4% [1:6 8]
-            if isempty(offsets.(list_matlab_wmos{matlab_index}).gdap.(comp_data{c}))
+            if isempty(offsets.(list_matlab_wmos{matlab_index}).gdap.([comp_data{c} '_offset']))
                 continue
             end
             subplot(6,2,1+(c-1)*2); hold on
-            title( comp_data{c}, 'interpreter', 'none')
+            if c==1
+                title([num2str(wmo_search) ' ' comp_data{c}], 'interpreter', 'none')
+            else
+                title(comp_data{c}, 'interpreter', 'none')
 
+            end
             plot(offsets.(list_matlab_wmos{matlab_index}).gdap.([comp_data{c} '_offset']), ...
-                offsets.(list_matlab_wmos{matlab_index}).gdap.PRES_ADJUSTED, 'x', 'color', c_map(2,:))
+                offsets.(list_matlab_wmos{matlab_index}).gdap.PRES_ADJUSTED_gdap, 'x', 'color', c_map(2,:))
             hold on
             plot(gdap_offsets.([comp_data{c} '_offset'])(python_index), ...
                 gdap_offsets.PRES_ADJUSTED(python_index), 'o', 'color', c_map(4,:))
