@@ -275,7 +275,6 @@ else:
 #appends 1m interpolated dataset in argo_interp for comparison to glodap (not saved currently)
 
 
-
 wmo_list= list()
 for n in range(start_index,len(argolist)):
     print(str(n)+' Processing float file '+ argolist[n])
@@ -288,14 +287,21 @@ for n in range(start_index,len(argolist)):
     nprof_n = argo_n.dims['N_PROF']
     
     #   set bad data and possibly bad data to NaN 
-    for q in qc_data_fields:
+    for q in qc_data_fields:      
         if q in argo_n.keys():
             qc_val = argo_n[q+'_QC'].values.astype('float')
             argo_n[q].where(np.logical_and(qc_val<3.,qc_val>4.))
             
             #check for any Inf values not included in QC flag and set to NaN
             argo_n[q].values[np.isinf(argo_n[q]).values] = np.nan
-
+      
+    # check for interpolated profile positions (under ice) and set all BGC data to nan
+    qc_val = argo_n['POSITION_QC'].values.astype('float')
+    for b in bgc_data_fields:
+        if b in argo_n.keys() and np.any(qc_val==8):
+            naninds = np.argwhere(qc_val==8)[:,0]
+            argo_n[b][naninds,:] = np.nan
+    
     # we are currently processing floats that have no valid biogeochemical data. 
     #Should check to see if data in key 
     #original bgc parameters (O2, NO3, pH) is valid and skip the rest if not
@@ -393,7 +399,7 @@ for n in range(start_index,len(argolist)):
                                                VerboseTF=False)                                  
 
         argo_n['TALK_LIAR'] = (['N_PROF','N_LEVELS'],
-                                   np.reshape(np.asarray(results),argo_n.PH_IN_SITU_TOTAL_ADJUSTED.shape))
+                                np.reshape(np.asarray(results),argo_n.PH_IN_SITU_TOTAL_ADJUSTED.shape))
   
     
         ##### Calculate float pH at 25C, DIC and apply bias corr
@@ -695,7 +701,7 @@ for wmo, group in argo_wmo:
                 continue
                 
             ##optional: add spice criteria
-            spice_diff = group.spice.values[n,dens_ind]-gdap_match.spice.values[m]
+            spice_diff = np.absolute(group.spice.values[n,dens_ind]-gdap_match.spice.values[m])
             
             #don't use matches if spice difference exceeds delta_spice
             if spice_diff > delta_spice:
