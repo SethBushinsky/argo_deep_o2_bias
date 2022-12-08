@@ -100,27 +100,34 @@ for n,g in offsets_g:
     axn.set_title('Offsets vs float date') 
     
     #vs pressure 
-    axn = plt.subplot(5,2,7)
+    axn = plt.subplot(5,3,7)
     axn.plot(g.DOXY_ADJUSTED_offset,g.PRES_ADJUSTED_float,'bx')
     axn.set_title('Float pres vs offset')
     plt.gca().invert_yaxis()
     axn.set_ylabel('pres')
     
-    axn = plt.subplot(5,2,8)
+    axn = plt.subplot(5,3,8)
     axn.plot(g.DOXY_ADJUSTED_offset,g.PRES_ADJUSTED_glodap,'bx')
     axn.set_title('GDAP pres vs offset')
     plt.gca().invert_yaxis()
     
     #vs density 
-    axn = plt.subplot(5,2,9)
+    axn = plt.subplot(5,3,10)
     axn.plot(g.DOXY_ADJUSTED_offset,g.PDENS_float,'bx')
     axn.set_title('Float Pdens vs offset')
     axn.set_ylabel('dens')
     
-    axn = plt.subplot(5,2,10)
+    axn = plt.subplot(5,3,11)
     axn.plot(g.DOXY_ADJUSTED_offset,g.PDENS_glodap,'bx')
     axn.set_title('GDAP Pdens vs offset')
-
+    
+    axn = plt.subplot(5,3,9)
+    axn.scatter(g.PSAL_ADJUSTED_float,g.TEMP_ADJUSTED_float,c=g.DOXY_ADJUSTED_offset)
+    axn.set_title('GDAP Pdens vs offset')
+    
+    axn = plt.subplot(5,3,12)
+    axn.scatter(g.PSAL_ADJUSTED_glodap,g.TEMP_ADJUSTED_glodap,c=g.DOXY_ADJUSTED_offset)
+    axn.set_title('GDAP Pdens vs offset')
     
     plt.savefig(output_dir+str(g.main_float_wmo.values[0])+'_v_glodap.png')
     plt.clf()
@@ -288,7 +295,7 @@ for n,group in offsets_g:
     print(n)
     print(group['DOXY_ADJUSTED_offset'].shape[0])
     #print equations associated with comment
-    print(np.unique(group['o2_calib_equation'].values))
+    print(np.unique(group['main_float_wmo'].values))
     #plot histogram
     plt.hist(group['DOXY_ADJUSTED_offset'], bins=np.linspace(-60, 60, 121),label=str(n))
 
