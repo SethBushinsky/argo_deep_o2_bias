@@ -6,9 +6,9 @@
 #       extension: .py
 #       format_name: light
 #       format_version: '1.5'
-#       jupytext_version: 1.11.3
+#       jupytext_version: 1.14.0
 #   kernelspec:
-#     display_name: Python 3
+#     display_name: Python 3 (ipykernel)
 #     language: python
 #     name: python3
 # ---
@@ -230,7 +230,7 @@ gdap = gdap.rename(columns={'G2longitude':'LONGITUDE', 'G2latitude':'LATITUDE', 
 # ## 2. Apply float bias corrections 
 
 # +
-append_data = 1 #reads in and adds to argo_interp_temp.nc rather than overwriting and running all floats
+append_data = 0 #reads in and adds to argo_interp_temp.nc rather than overwriting and running all floats
 argolist = []
 for file in os.listdir(argo_path):
     if file.endswith('Sprof.nc'):
@@ -290,7 +290,11 @@ for n in range(start_index,len(argolist)):
     for q in qc_data_fields:      
         if q in argo_n.keys():
             qc_val = argo_n[q+'_QC'].values.astype('float')
-            argo_n[q].where(np.logical_and(qc_val<3.,qc_val>4.))
+            
+            # for some reason the .where statement was not filtering out bad values. 
+            #This code is now changing QC values of 3 or 4 to nans, not sure if it is the best approach
+            #argo_n[q].where(np.logical_and(qc_val<3.,qc_val>4.))
+            argo_n[q].values[np.logical_or(qc_val==4,qc_val==3)]=np.nan
             
             #check for any Inf values not included in QC flag and set to NaN
             argo_n[q].values[np.isinf(argo_n[q]).values] = np.nan
