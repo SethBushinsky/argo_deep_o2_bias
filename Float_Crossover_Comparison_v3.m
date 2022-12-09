@@ -121,7 +121,7 @@ gdap_SO.pH_25C_TOTAL = DATA(:,37);
 % set pH to nan where there was no original pH data from GLODAP
 gdap_SO.pH_25C_TOTAL(isnan(gdap_SO.G2phts25p0))=nan;
 
-
+%%
 qc_data_fields = {'TEMP_ADJUSTED', 'PSAL_ADJUSTED', 'DOXY_ADJUSTED', 'NITRATE_ADJUSTED',  'PRES_ADJUSTED'};
 
 
@@ -130,9 +130,13 @@ for f = 1:length(SNs)
     % set bad data and possibly bad data to NaN (also infs)
     for qc = 1:length(qc_data_fields)
         if isfield(Argo.(SNs{f}), qc_data_fields{qc})
-            bad_index =  Argo.(SNs{f}).([qc_data_fields{qc} '_QC'])=='3' | Argo.(SNs{f}).([qc_data_fields{qc} '_QC'])=='4';
-            Argo.(SNs{f}).(qc_data_fields{qc})(bad_index) = nan;
-        
+            for p = 1:length(Argo.(SNs{f}).JULD)
+                %             bad_index =  Argo.(SNs{f}).([qc_data_fields{qc} '_QC'])=='3' | Argo.(SNs{f}).([qc_data_fields{qc} '_QC'])=='4';
+                bad_index =  Argo.(SNs{f}).([qc_data_fields{qc} '_QC'])(:,p)=='3' | Argo.(SNs{f}).([qc_data_fields{qc} '_QC'])(:,p)=='4';
+                Argo.(SNs{f}).(qc_data_fields{qc})(p,bad_index) = nan;
+
+            end
+
             inf_index = isinf(Argo.(SNs{f}).(qc_data_fields{qc}));
 
             if sum(reshape(inf_index,[],1))>0
@@ -282,7 +286,7 @@ clear offsets
 
 meta_data = {'GMT_Matlab', 'LATITUDE', 'LONGITUDE'};
 % comp_data = {'TEMP_ADJUSTED', 'PSAL_ADJUSTED', 'DOXY_ADJUSTED', 'NITRATE_ADJUSTED', 'pH_25C_TOTAL', 'PDENS', 'PRES_ADJUSTED', 'DIC'};
-comp_data = {'TEMP_ADJUSTED', 'PSAL_ADJUSTED', 'DOXY_ADJUSTED', 'NITRATE_ADJUSTED', 'PDENS', 'PRES_ADJUSTED'};
+comp_data = {'TEMP_ADJUSTED', 'PSAL_ADJUSTED', 'DOXY_ADJUSTED', 'NITRATE_ADJUSTED', 'PDENS', 'PRES_ADJUSTED', 'spice'};
 
 plot_on=0;
 last = 1;
@@ -614,9 +618,11 @@ end
 c_map = brewermap(6, 'Set1');
 
 gdap_fields = fieldnames(gdap_SO);
-plot_on=0;
+prof_plot_on=0;
 plot_final=1;
 
+dens_threshold = 0.0005;
+spice_threshold = 0.02;
 
 var_to_plot = 'DOXY_ADJUSTED';
 c_p = 3;
@@ -624,6 +630,7 @@ c_p = 3;
 [X_S, Y_T] = meshgrid(33:.1:36, -2:.5:16);
 dens_grid = sw_pden(X_S, Y_T, 1500, 1)-1000;
 
+plot_ver = '_v5';
 
 for q= 1:length(SNs)
     %     last=q;
@@ -634,7 +641,11 @@ for q= 1:length(SNs)
         continue
     end
     
-    
+    % calculate spice for the float:
+    if ~isfield(Argo.(SNs{q}), 'spice')
+        Argo.(SNs{q}).spice = spice(Argo.(SNs{q}).TEMP_ADJUSTED, Argo.(SNs{q}).PSAL_ADJUSTED);
+    end
+
     comp_data_to_run = [];
     for cd = 1:length(comp_data)
         if isfield(Argo.(SNs{q}), comp_data{cd})
@@ -645,7 +656,7 @@ for q= 1:length(SNs)
     end
     
     
-    if length(comp_data_to_run)<5
+    if length(comp_data_to_run)<6
         disp(['No non-NAN bgc adjusted data for: ' SNs{q}])
         continue
     end
@@ -684,9 +695,8 @@ for q= 1:length(SNs)
             temp_gdap.(gdap_fields{g}) = gdap_SO.(gdap_fields{g})(lat_test & lon_test);
         end
     end
-    %
+    
     clear lat_test lon_test
-    % go through each float profile and find any glodap data that is close
     
     % prep offsets to enter glodap data
     for t = 1:length(meta_data)
@@ -701,8 +711,11 @@ for q= 1:length(SNs)
 
     end
     
+    % calculate spice for temp_gdap
+    temp_gdap.spice = spice(temp_gdap.TEMP_ADJUSTED, temp_gdap.PSAL_ADJUSTED);
+
     
-    
+    % go through each float profile and find any glodap data that is close
     for p = 1:length(Argo.(SNs{q}).GMT_Matlab)
         clear interp_val
         lat_range = [Argo.(SNs{q}).LATITUDE(p)-lat_tol Argo.(SNs{q}).LATITUDE(p)+lat_tol];
@@ -720,7 +733,7 @@ for q= 1:length(SNs)
         if sum(lon_test & lat_test)==0
             continue
         end
-        if plot_on==1
+        if prof_plot_on==1
             clf
         end
         % get pressures of the float profile between 1500 and 2000 m
@@ -780,27 +793,31 @@ for q= 1:length(SNs)
             continue
         end
         interp_dens = sw_pden(interp_val.PSAL_ADJUSTED, interp_val.TEMP_ADJUSTED, interp_press_range, 0);
-        if plot_on==1
+        if prof_plot_on==1
 
             % plot var vs. pressure
-            d1 = subplot(3,2,1);
+            d1 = subplot(4,2,1);
             plot(d1, Argo.(SNs{q}).(comp_data{c_p})(p,:), Argo.(SNs{q}).PRES_ADJUSTED(p,:), 'o')
             hold on
             plot(d1, interp_val.(comp_data{c_p}), interp_press_range, '-x')
 %             disp(p)
             
-            d2 = subplot(3,2,2);
+            d2 = subplot(4,2,2);
             plot(d2, Argo.(SNs{q}).PDENS(p,:), Argo.(SNs{q}).PRES_ADJUSTED(p,:), 'o')
             hold on
             plot(d2, interp_dens, interp_press_range, '-x')
             %            disp(p)
             
-            d3 = subplot(3,2,3);
+            d3 = subplot(4,2,3);
             plot(d3, Argo.(SNs{q}).(comp_data{c_p})(p,:), Argo.(SNs{q}).PDENS(p,:), 'o')
             hold on
             plot(d3, interp_val.(comp_data{c_p}), interp_dens, '-x')
 
-           
+            dx = subplot(4,2,5);
+
+            plot(dx, Argo.(SNs{q}).(comp_data{c_p})(p,:), Argo.(SNs{q}).spice(p,:), 'o')
+            hold on
+            plot(dx, interp_val.(comp_data{c_p}), interp_val.spice, '-x')
         end
         if sum(~isnan(interp_dens))==0
             continue
@@ -829,14 +846,16 @@ for q= 1:length(SNs)
             % within - % note that only using top or bottom doesn't work,
             % because density doesn't necessarily line up. needs to be
             % max/min or look for greater than a density instep:
-          
-            if interp_index==1 || interp_index==find(~isnan(interp_dens),1,'last') || abs(temp_gdap.PDENS(gdap_press_index(y)) - interp_dens(interp_index))>0.0005
+            % adding a spice threshold too
+            if interp_index==1 || interp_index==find(~isnan(interp_dens),1,'last') || ...
+                    abs(temp_gdap.PDENS(gdap_press_index(y)) - interp_dens(interp_index))>dens_threshold|| ...
+                    abs(temp_gdap.spice(gdap_press_index(y)) - interp_val.spice(interp_index))> spice_threshold
                 continue
             end
             
             
             %plot glodap profiles used for comparison
-            if plot_on==1
+            if prof_plot_on==1
                 
                 % find points in that profile
                 gdap_profile_index = temp_gdap.G2cruise==temp_gdap.G2cruise(gdap_press_index(y)) & temp_gdap.G2station==temp_gdap.G2station(gdap_press_index(y));
@@ -844,7 +863,8 @@ for q= 1:length(SNs)
                 plot(d2, temp_gdap.PDENS(gdap_profile_index), temp_gdap.PRES_ADJUSTED(gdap_profile_index), '+-m')
                 
                 plot(d3, temp_gdap.DOXY_ADJUSTED(gdap_profile_index), temp_gdap.PDENS(gdap_profile_index), '+-m')
-                
+                plot(dx, temp_gdap.DOXY_ADJUSTED(gdap_profile_index), temp_gdap.spice(gdap_profile_index), '+-m')
+
             end
             
             for md = 1:length(meta_data)
@@ -875,7 +895,7 @@ for q= 1:length(SNs)
            
                 
             end
-            if plot_on==1
+            if prof_plot_on==1
                 plot(d1, interp_val.(comp_data{c_p})(interp_index), interp_val.PRES_ADJUSTED(interp_index), 'sk', 'markersize', 15)
                 
                 %plot glodap match
@@ -885,6 +905,11 @@ for q= 1:length(SNs)
                 % density plot
                 plot(d3, interp_val.(comp_data{c_p})(interp_index), interp_val.PDENS(interp_index), 'sk', 'markersize', 15)
                 plot(d3, temp_gdap.(comp_data{c_p})(gdap_press_index(y)), temp_gdap.PDENS(gdap_press_index(y)), 'db', 'markersize', 15)
+
+                % spice plot
+                plot(dx, interp_val.(comp_data{c_p})(interp_index), interp_val.spice(interp_index), 'sk', 'markersize', 15)
+                plot(dx, temp_gdap.(comp_data{c_p})(gdap_press_index(y)), temp_gdap.spice(gdap_press_index(y)), 'db', 'markersize', 15)
+
             end
             
             if isempty(gdap_cruise_list) || (sum(gdap_cruise_list(:,1)==temp_gdap.G2cruise(gdap_press_index(y)) & gdap_cruise_list(:,2)==temp_gdap.G2station(gdap_press_index(y)))==0)
@@ -893,7 +918,7 @@ for q= 1:length(SNs)
 %             pause
         end
         
-        if plot_on==1
+        if prof_plot_on==1
             set([d1 d2], 'ydir', 'reverse', 'ylim', [1200 2000])
             set(d3, 'ylim', [min(interp_dens)-.02 max(interp_dens)+.02])
             ylabel(d1, 'Pressure'); xlabel(d1, comp_data{c_p}, 'interpreter', 'none');
@@ -901,7 +926,12 @@ for q= 1:length(SNs)
             ylabel(d3, 'PDENS'); xlabel(d3, comp_data{c_p}, 'interpreter', 'none');
             title(d1, [SNs{q} ' Prof: ' num2str(p)])
             
-            d4 = subplot(3,2,4);
+            ylabel(dx, 'spice'); xlabel(dx, comp_data{c_p}, 'interpreter', 'none');
+            set(dx, 'ylim', [min(interp_val.spice)-.05 max(interp_val.spice)+.05],  ...
+                'xlim', [min([offsets.(SNs{q}).gdap.([comp_data{c_p} '_float']) ; offsets.(SNs{q}).gdap.([comp_data{c_p} '_gdap'])])-5 ... 
+                max([offsets.(SNs{q}).gdap.([comp_data{c_p} '_float']) ; offsets.(SNs{q}).gdap.([comp_data{c_p} '_gdap'])])+5])
+
+            d4 = subplot(4,2,4);
             hold on
             text(0.1, .9, 'G2cruise G2station Date')
             
@@ -911,11 +941,11 @@ for q= 1:length(SNs)
             
             % histograms
             prof_index = offsets.(SNs{q}).gdap.GMT_Matlab_float==Argo.(SNs{q}).GMT_Matlab(p);
-            d5 = subplot(3,2,5);
+            d5 = subplot(4,2,7);
             hold on
             histogram(offsets.(SNs{q}).gdap.([comp_data{c_p} '_offset'])(prof_index));
             title([comp_data{c_p} '_offset'], 'interpreter', 'none')
-            d6 = subplot(3,2,6);
+            d6 = subplot(4,2,8);
             histogram(offsets.(SNs{q}).gdap.PDENS_offset(prof_index));
             title('PDENS offset')
             
@@ -925,7 +955,7 @@ for q= 1:length(SNs)
             
             
             plot_filename = [SNs{q}(2:end) '_Prof_' num2str(p) '_' comp_data{c_p}];
-            print(gcf, '-dpng', '-r200', [Plot_dir '/' SNs{q}(2:end) '/' plot_filename '.png' ])
+            print(gcf, '-dpng', '-r200', [Plot_dir '/' SNs{q}(2:end) '/' plot_filename plot_ver '.png' ])
             
         end
         
@@ -999,38 +1029,38 @@ for q= 1:length(SNs)
        subplot(5,3,14)
        plot(offsets.(SNs{q}).gdap.([comp_data{c_p} '_offset']), offsets.(SNs{q}).gdap.PDENS_gdap, 'x');
        title('GDAP PDENS vs offset')
-       
+
 
        T_lims = [min([offsets.(SNs{q}).gdap.TEMP_ADJUSTED_float; offsets.(SNs{q}).gdap.TEMP_ADJUSTED_gdap]) max([offsets.(SNs{q}).gdap.TEMP_ADJUSTED_float; offsets.(SNs{q}).gdap.TEMP_ADJUSTED_gdap])];
        S_lims = [min([offsets.(SNs{q}).gdap.PSAL_ADJUSTED_float; offsets.(SNs{q}).gdap.PSAL_ADJUSTED_gdap]) max([offsets.(SNs{q}).gdap.PSAL_ADJUSTED_float; offsets.(SNs{q}).gdap.PSAL_ADJUSTED_gdap])];
 
        subplot(5,3,12)
        hold on
-                     contour(X_S, Y_T, dens_grid, 'ShowText', 'off', 'levellist', 24.1:.01:29, 'color', [.6 .6 .6]);
+       contour(X_S, Y_T, dens_grid, 'ShowText', 'off', 'levellist', 24.1:.01:29, 'color', [.6 .6 .6]);
 
-%        contour(X_S, Y_T, dens_grid, 'k', 'ShowText', 'on');
-scatter(offsets.(SNs{q}).gdap.PSAL_ADJUSTED_float, offsets.(SNs{q}).gdap.TEMP_ADJUSTED_float, 20, offsets.(SNs{q}).gdap.([comp_data{c_p} '_offset']), 'filled')
-colorbar
-set(gca, 'xlim', S_lims, 'ylim', T_lims)
-title('Offsets plotted w/ float T and S')
-caxis([nanmean(offsets.(SNs{q}).gdap.([comp_data{c_p} '_offset']))-2*nanstd(offsets.(SNs{q}).gdap.([comp_data{c_p} '_offset'])) ...
-    nanmean(offsets.(SNs{q}).gdap.([comp_data{c_p} '_offset']))+ 2*nanstd(offsets.(SNs{q}).gdap.([comp_data{c_p} '_offset']))])
-subplot(5,3,15)
-hold on
-contour(X_S, Y_T, dens_grid, 'ShowText', 'off', 'levellist', 24.1:.01:29, 'color', [.6 .6 .6]);
-%        contour(X_S, Y_T, dens_grid, 'k', 'ShowText', 'on');
-scatter(offsets.(SNs{q}).gdap.PSAL_ADJUSTED_gdap, offsets.(SNs{q}).gdap.TEMP_ADJUSTED_gdap, 20, offsets.(SNs{q}).gdap.([comp_data{c_p} '_offset']), 'filled')
-colorbar
-set(gca, 'xlim', S_lims, 'ylim', T_lims)
+       %        contour(X_S, Y_T, dens_grid, 'k', 'ShowText', 'on');
+       scatter(offsets.(SNs{q}).gdap.PSAL_ADJUSTED_float, offsets.(SNs{q}).gdap.TEMP_ADJUSTED_float, 20, offsets.(SNs{q}).gdap.([comp_data{c_p} '_offset']), 'filled')
+       colorbar
+       set(gca, 'xlim', S_lims, 'ylim', T_lims)
+       title('Offsets plotted w/ float T and S')
+       caxis([nanmean(offsets.(SNs{q}).gdap.([comp_data{c_p} '_offset']))-2*nanstd(offsets.(SNs{q}).gdap.([comp_data{c_p} '_offset'])) ...
+           nanmean(offsets.(SNs{q}).gdap.([comp_data{c_p} '_offset']))+ 2*nanstd(offsets.(SNs{q}).gdap.([comp_data{c_p} '_offset']))])
+       subplot(5,3,15)
+       hold on
+       contour(X_S, Y_T, dens_grid, 'ShowText', 'off', 'levellist', 24.1:.01:29, 'color', [.6 .6 .6]);
+       %        contour(X_S, Y_T, dens_grid, 'k', 'ShowText', 'on');
+       scatter(offsets.(SNs{q}).gdap.PSAL_ADJUSTED_gdap, offsets.(SNs{q}).gdap.TEMP_ADJUSTED_gdap, 20, offsets.(SNs{q}).gdap.([comp_data{c_p} '_offset']), 'filled')
+       colorbar
+       set(gca, 'xlim', S_lims, 'ylim', T_lims)
 
-title('Offsets plotted w/ gdap T and S')
-caxis([nanmean(offsets.(SNs{q}).gdap.([comp_data{c_p} '_offset']))-2*nanstd(offsets.(SNs{q}).gdap.([comp_data{c_p} '_offset'])) ...
-    nanmean(offsets.(SNs{q}).gdap.([comp_data{c_p} '_offset']))+ 2*nanstd(offsets.(SNs{q}).gdap.([comp_data{c_p} '_offset']))])
+       title('Offsets plotted w/ gdap T and S')
+       caxis([nanmean(offsets.(SNs{q}).gdap.([comp_data{c_p} '_offset']))-2*nanstd(offsets.(SNs{q}).gdap.([comp_data{c_p} '_offset'])) ...
+           nanmean(offsets.(SNs{q}).gdap.([comp_data{c_p} '_offset']))+ 2*nanstd(offsets.(SNs{q}).gdap.([comp_data{c_p} '_offset']))])
 
        plot_filename = [SNs{q}(2:end) '_' comp_data{c_p}];
-       print(gcf, '-dpng', '-r200', [Plot_dir '/' plot_filename '_v2.png' ])
+       print(gcf, '-dpng', '-r200', [Plot_dir '/' plot_filename plot_ver '.png' ])
    end
-   
+
    disp([SNs{q} ' ' num2str(q/length(SNs)*100) ' % done'])
 
 
