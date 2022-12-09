@@ -33,7 +33,7 @@ end
 c_map = brewermap(6, 'Set1');
 
 Plot_dir = [project_dir '../plots_matlab/offset_comparison/'];
-for w = 2%:length(list_python_wmos)
+for w = 1:length(list_python_wmos)
     wmo_search = double(list_python_wmos(w));
     python_index = gdap_offsets.main_float_wmo==wmo_search;
     
@@ -62,7 +62,7 @@ for w = 2%:length(list_python_wmos)
                 offsets.(list_matlab_wmos{matlab_index}).gdap.PRES_ADJUSTED_gdap, 'x', 'color', c_map(2,:))
             hold on
             plot(gdap_offsets.([comp_data{c} '_offset'])(python_index), ...
-                gdap_offsets.PRES_ADJUSTED(python_index), 'o', 'color', c_map(4,:))
+                gdap_offsets.PRES_ADJUSTED_glodap(python_index), 'o', 'color', c_map(4,:))
             
             set(gca, 'ydir', 'reverse')
             
@@ -123,8 +123,8 @@ for w = 2%:length(list_python_wmos)
         
         d3 = subplot(6,2,11:12);
         
-        python_glodap_Matlab_time = double(gdap_offsets.datetime(python_index) ...
-            *1/60*1/24+datenum(1987,02,20));
+        python_glodap_Matlab_time = double(gdap_offsets.glodap_datetime(python_index) ...
+            *1/60*1/24+datenum(1989,07,16));
         python_float_Matlab_time = double(gdap_offsets.main_float_juld(python_index) ...
             *1/(10^9)*1/60*1/60*1/24+datenum(2007,03,13,11,27,48));
         
@@ -150,7 +150,7 @@ for w = 2%:length(list_python_wmos)
 
         plot_filename = ['Matlab_Python_comp_' num2str(wmo_search)];
         
-        print(gcf, '-dpng', '-r400', [Plot_dir  plot_filename '_v3.png' ])
-
+        print(gcf, '-dpng', '-r400', [Plot_dir  plot_filename '_v5.png' ])
+pause
     end
 end
