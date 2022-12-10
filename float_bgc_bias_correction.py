@@ -107,7 +107,7 @@ dist = 50.
 #max density difference to store crossover
 delta_dens = 0.0005
 #max spice difference to store crossover
-delta_spice = 0.02
+delta_spice = 0.01
 
 #variables to do crossovers
 var_list_plot = ['PRES_ADJUSTED','TEMP_ADJUSTED','PSAL_ADJUSTED','DOXY_ADJUSTED','NITRATE_ADJUSTED',
@@ -230,7 +230,7 @@ gdap = gdap.rename(columns={'G2longitude':'LONGITUDE', 'G2latitude':'LATITUDE', 
 # ## 2. Apply float bias corrections 
 
 # +
-append_data = 0 #reads in and adds to argo_interp_temp.nc rather than overwriting and running all floats
+append_data = 1 #reads in and adds to argo_interp_temp.nc rather than overwriting and running all floats
 argolist = []
 for file in os.listdir(argo_path):
     if file.endswith('Sprof.nc'):
