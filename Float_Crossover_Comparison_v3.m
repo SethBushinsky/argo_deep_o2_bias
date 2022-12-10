@@ -632,7 +632,7 @@ dens_grid = sw_pden(X_S, Y_T, 1500, 1)-1000;
 
 plot_ver = '_v5';
 
-for q= 1:length(SNs)
+for q= 60:length(SNs)
     %     last=q;
     
     disp([num2str(q) ' ' SNs{q}])
@@ -987,8 +987,11 @@ for q= 1:length(SNs)
        subplot(5,3,3); hold on
        scatter(offsets.(SNs{q}).gdap.LONGITUDE_float, offsets.(SNs{q}).gdap.LATITUDE_float, 30, ...
            offsets.(SNs{q}).gdap.([comp_data{c_p} '_offset']), 'o', 'filled')
+       try
        caxis([nanmean(offsets.(SNs{q}).gdap.([comp_data{c_p} '_offset']))-2*nanstd(offsets.(SNs{q}).gdap.([comp_data{c_p} '_offset'])) ...
            nanmean(offsets.(SNs{q}).gdap.([comp_data{c_p} '_offset']))+ 2*nanstd(offsets.(SNs{q}).gdap.([comp_data{c_p} '_offset']))])
+       catch
+       end
        colorbar
        title('Map of offsets')
        
@@ -1043,8 +1046,11 @@ for q= 1:length(SNs)
        colorbar
        set(gca, 'xlim', S_lims, 'ylim', T_lims)
        title('Offsets plotted w/ float T and S')
+       try
        caxis([nanmean(offsets.(SNs{q}).gdap.([comp_data{c_p} '_offset']))-2*nanstd(offsets.(SNs{q}).gdap.([comp_data{c_p} '_offset'])) ...
            nanmean(offsets.(SNs{q}).gdap.([comp_data{c_p} '_offset']))+ 2*nanstd(offsets.(SNs{q}).gdap.([comp_data{c_p} '_offset']))])
+       catch
+       end
        subplot(5,3,15)
        hold on
        contour(X_S, Y_T, dens_grid, 'ShowText', 'off', 'levellist', 24.1:.01:29, 'color', [.6 .6 .6]);
@@ -1054,9 +1060,11 @@ for q= 1:length(SNs)
        set(gca, 'xlim', S_lims, 'ylim', T_lims)
 
        title('Offsets plotted w/ gdap T and S')
+       try
        caxis([nanmean(offsets.(SNs{q}).gdap.([comp_data{c_p} '_offset']))-2*nanstd(offsets.(SNs{q}).gdap.([comp_data{c_p} '_offset'])) ...
            nanmean(offsets.(SNs{q}).gdap.([comp_data{c_p} '_offset']))+ 2*nanstd(offsets.(SNs{q}).gdap.([comp_data{c_p} '_offset']))])
-
+       catch
+       end
        plot_filename = [SNs{q}(2:end) '_' comp_data{c_p}];
        print(gcf, '-dpng', '-r200', [Plot_dir '/' plot_filename plot_ver '.png' ])
    end

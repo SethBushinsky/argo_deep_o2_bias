@@ -6,9 +6,9 @@
 #       extension: .py
 #       format_name: light
 #       format_version: '1.5'
-#       jupytext_version: 1.11.3
+#       jupytext_version: 1.14.0
 #   kernelspec:
-#     display_name: Python 3
+#     display_name: Python 3 (ipykernel)
 #     language: python
 #     name: python3
 # ---
@@ -284,7 +284,7 @@ glodap_offsets['o2_calib_air'] = xr.where(glodap_offsets.o2_calib_group=='bad','
 
 # +
 # which metadata variable to group by
-group_variable = 'o2_calib_comment'
+group_variable = 'o2_calib_air'
 
 
 #iterate through groups to plot offsets by group
@@ -298,10 +298,14 @@ for n,group in offsets_g:
     print(np.unique(group['main_float_wmo'].values))
     #plot histogram
     plt.hist(group['DOXY_ADJUSTED_offset'], bins=np.linspace(-60, 60, 121),label=str(n))
+    grp_mean = group['DOXY_ADJUSTED_offset'].mean()
+    grp_std = group['DOXY_ADJUSTED_offset'].std()
+    grp_med = group['DOXY_ADJUSTED_offset'].median()
 
     #calc mean/median values
-    
+    plt.grid()
     plt.xlabel('DOXY Offset')
+    plt.title('mean: ' + str(grp_mean.values) + ' \pm ' + str(grp_std.values) + '; median: ' + str(grp_med.values))
     plt.savefig(output_dir + 'Glodap_offsets_doxy_'+group_variable+'_'+str(n)+'.png')
     plt.clf()
     
@@ -354,12 +358,33 @@ plt.scatter(glodap_offsets.glodap_longitude,glodap_offsets.glodap_longitude,s=4)
 plt.savefig(output_dir+ 'map_o2_offsets_100.png')
 plt.show()
 
+# +
 #nitrate all glodap offsets
 plt.figure(figsize=(20,12))
-plt.hist(glodap_offsets.NITRATE_ADJUSTED_offset, bins=np.linspace(-400, 400, 401))
+plt.hist(glodap_offsets.NITRATE_ADJUSTED_offset, bins=np.linspace(-4, 4, 30))
+nmean = np.around(glodap_offsets['NITRATE_ADJUSTED_offset'].mean().values, decimals=2)
+nmedian = np.around(glodap_offsets['NITRATE_ADJUSTED_offset'].median().values, decimals=2)
+plt.grid()
+    
+plt.title('Mean: ' + str(nmean))
 plt.xlabel('NITRATE Offset')
 plt.savefig(output_dir + 'Glodap_offsets_nitrate_plus_minus_400.png')
 
+
+# +
+#nitrate all glodap offsets
+plt.figure(figsize=(20,12))
+plt.hist(glodap_offsets.DIC_offset, bins=np.linspace(-40, 40, 30))
+nmean = np.around(glodap_offsets['DIC_offset'].mean().values, decimals=2)
+nmedian = np.around(glodap_offsets['DIC_offset'].median().values, decimals=2)
+plt.grid()
+    
+plt.title('Mean: ' + str(nmean))
+plt.xlabel('DIC Offset')
+plt.savefig(output_dir + 'Glodap_offsets_DIC.png')
+# -
+
+glodap_offsets
 
 # plot histograms of offsets for each main float with crossovers
 
