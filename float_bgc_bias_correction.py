@@ -189,6 +189,23 @@ results = carbon_utils.LIPHR_matlab(LIPHR_path,
 
 gdap['pH_in_situ_total'] = results
 gdap.pH_in_situ_total[np.isnan(gdap.G2phts25p0)] = np.nan
+# -
+
+Coordinates = np.stack((gdap.G2longitude.values.flatten(), 
+                        gdap.G2latitude.values.flatten(), 
+                        gdap.G2pressure.values.flatten()),
+                        axis=1)
+np.shape(Coordinates)
+
+# +
+Measurements = np.stack((gdap.G2salinity.values.flatten(), 
+                         gdap.G2temperature.values.flatten(), 
+                         gdap.G2nitrate.values.flatten(), 
+                         gdap.G2oxygen.values.flatten()),
+                         axis=1)
+MeasIDVec = [1, 7, 3, 6]
+
+np.shape(Measurements)
 
 # +
 # gdap pH 25C 
@@ -429,6 +446,7 @@ for n in range(start_index,len(argolist)):
            
         argo_n['pH_25C_TOTAL_ADJUSTED'] = (['N_PROF','N_LEVELS'],results['pH'])
         argo_n['DIC'] = (['N_PROF','N_LEVELS'],results['dic'])  
+        # Note that this calculates pCO2 as though the SST is 25C, probably should change/remove
         argo_n['pCO2'] = (['N_PROF','N_LEVELS'],results['pCO2_out'])  
         
         for p in range(nprof_n):
