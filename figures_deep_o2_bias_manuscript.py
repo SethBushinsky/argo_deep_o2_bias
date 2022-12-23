@@ -6,9 +6,9 @@
 #       extension: .py
 #       format_name: light
 #       format_version: '1.5'
-#       jupytext_version: 1.13.8
+#       jupytext_version: 1.14.0
 #   kernelspec:
-#     display_name: Python 3
+#     display_name: Python 3 (ipykernel)
 #     language: python
 #     name: python3
 # ---
@@ -28,6 +28,7 @@ import cartopy.feature as cfeature
 from datetime import datetime, date, time
 import time
 from scipy import stats
+import carbon_utils
 
 
 # Function for converting date to year fraction (taken from stack overflow: https://stackoverflow.com/questions/6451655/how-to-convert-python-datetime-dates-to-decimal-float-years)
@@ -254,3 +255,138 @@ plt.hist(glodap_offsets.DOXY_ADJUSTED_offset, bins=np.linspace(-400, 400, 401))
 plt.xlabel('DOXY Offset')
 plt.savefig(output_dir_figs + 'Glodap_offsets_doxy_plus_minus_400.png')
 
+# -
+
+# Looking at impact of oxygen offsets on pH / pCO2 / Nitrate / DIC
+
+# +
+# load glodap_offsets with cal info:
+
+glodap_offsets = xr.load_dataset(output_dir+'glodap_offsets_withcalibration.nc')
+
+
+# +
+#create meta groups based on calibration groups (air cal, no air cal, no cal)
+g = glodap_offsets.o2_calib_group.copy(deep=True)
+g = g.where(glodap_offsets.o2_calib_group == 'air cal','not air')
+glodap_offsets['o2_calib_air'] = xr.where(glodap_offsets.o2_calib_group=='bad','no cal',g)
+
+glodap_offsets['o2_calib_air_key'] = xr.where(glodap_offsets.o2_calib_air=='air cal',1,0)
+
+glodap_offsets['o2_not_air_key'] = xr.where(glodap_offsets.o2_calib_air=='not air',-1,0)
+glodap_offsets['o2_cal_key'] = glodap_offsets['o2_calib_air_key'] + glodap_offsets['o2_not_air_key']
+
+wmo_means = glodap_offsets.groupby('main_float_wmo').mean(...)
+# -
+
+# new dataset of air_cal floats only
+a = wmo_means.where(wmo_means.o2_cal_key>0.6, drop=True)
+
+# +
+#load saved argo_interp data for ease of finding 1500m values
+argo_interp = xr.open_dataset(data_dir+'argo_interp_temp.nc')
+
+#group by float wmo
+argo_wmo = argo_interp.groupby('wmo')
+
+# +
+LIPHR_path = liar_dir
+
+pH_count = 0;
+# load float files, use offset information to calculate impact 
+for n in range(37, 38):#len(a.main_float_wmo)):
+    wmo_n = int(a.main_float_wmo[n].values)
+    
+    argo_derived_n = xr.load_dataset(argo_path+ 'derived/' + str(wmo_n) + '_derived.nc')
+
+    # check if the float also has pH
+    if 'PH_IN_SITU_TOTAL_ADJUSTED' in argo_derived_n.keys() and np.any(~np.isnan(argo_derived_n.PH_IN_SITU_TOTAL_ADJUSTED)):
+        pH_count = pH_count+1
+        print(str(n) + ': ' + str(a.main_float_wmo[n].values))
+
+    else:
+        continue
+    
+    nprof = argo_derived_n.LATITUDE.shape[0]
+
+    #test_pH = np.empty(nprof, dtype=float)
+    
+    # initialize coordinate and measurement arrays
+    Coordinates_all = np.empty([nprof, 3],dtype=float)
+    Coordinates_all[:] = np.nan
+       
+    Measurements_all = np.empty([nprof, 4],dtype=float)
+    Measurements_all[:] = np.nan
+    
+    MeasIDVec = [1, 7, 3, 6]
+    for p in range(nprof):
+        index_1500 = argo_wmo[wmo_n].PRES_ADJUSTED[p,:]==1500
+
+        #argo_wmo[5904659].PSAL_ADJUSTED[0,index_1500]
+        Coordinates_all[p,:] = np.stack((argo_wmo[wmo_n].LONGITUDE[p].values.flatten(), 
+                            argo_wmo[wmo_n].LATITUDE[p].values.flatten(), 
+                            argo_wmo[wmo_n].PRES_ADJUSTED[p,index_1500].values.flatten()),
+                            axis=1)
+        Measurements_all[p,:] = np.stack((argo_wmo[wmo_n].PSAL_ADJUSTED[p,index_1500].values.flatten(), 
+                             argo_wmo[wmo_n].TEMP_ADJUSTED[p,index_1500].values.flatten(), 
+                             argo_wmo[wmo_n].NITRATE_ADJUSTED[p,index_1500].values.flatten(), 
+                             argo_wmo[wmo_n].DOXY_ADJUSTED[p,index_1500].values.flatten()),
+                             axis=1)
+    
+    
+    # calculate LIPHR pH for all profiles
+    test_pH = carbon_utils.LIPHR_matlab(LIPHR_path,
+                                    Coordinates_all.tolist(),
+                                    Measurements_all.tolist(),
+                                    MeasIDVec, 
+                                    OAAdjustTF = False)  
+       
+    Measurements_o2_offset = np.concatenate(([Measurements_all[:,0]], 
+                                  [Measurements_all[:,1]],
+                                  [Measurements_all[:,2]],
+                                  [Measurements_all[:,3]] + a.DOXY_ADJUSTED_offset[n].values))
+    Measurements_o2_offset = np.transpose(Measurements_o2_offset)
+    # calculate LIPHR pH for all profiles
+    new_pH = carbon_utils.LIPHR_matlab(LIPHR_path,
+                                    Coordinates_all.tolist(),
+                                    Measurements_o2_offset.tolist(),
+                                    MeasIDVec, 
+                                    OAAdjustTF = False)  
+    argo_derived_n['pH_orig_LIPHR'] = (['N_PROF'],np.empty(argo_derived_n.PRES_ADJUSTED.shape[0])) #nprof x nlevel
+    argo_derived_n.pH_orig_LIPHR[:] = test_pH[:,0]
+
+    argo_derived_n['pH_O2_ADJUST_LIPHR'] = (['N_PROF'],np.empty(argo_derived_n.PRES_ADJUSTED.shape[0])) #nprof x nlevel
+    argo_derived_n.pH_O2_ADJUST_LIPHR[:] = new_pH[:,0]
+    
+    argo_derived_n['PH_IN_SITU_TOTAL_ADJUSTED_w_O2_ADJUST_OFFSET'] = \
+        argo_derived_n.PH_IN_SITU_TOTAL_ADJUSTED + np.mean(new_pH - test_pH)
+# -
+
+        #call CO2sys to calculate pCO2 with bias correction and no O2 correction (check against original)
+        results = pyco2.sys(
+                par1=argo_derived_n.TALK_LIAR, 
+                par2=argo_derived_n.pH_insitu_corr,
+                par1_type=1,
+                par2_type=3,
+                temperature=argo_n.TEMP_ADJUSTED, 
+                pressure=argo_n.PRES_ADJUSTED, 
+                salinity=argo_n.PSAL_ADJUSTED, 
+                temperature_out=25.* np.ones(argo_n.PRES_ADJUSTED.shape), #fixed 25C temperature
+                pressure_out=argo_n.PRES_ADJUSTED,
+                total_silicate=SI,
+                total_phosphate=PO4,
+                opt_pH_scale = 1, #total
+                opt_k_carbonic=10, #Lueker et al. 2000
+                opt_k_bisulfate=1, # Dickson 1990 (Note, matlab co2sys combines KSO4 with TB. option 3 = KSO4 of Dickson & TB of Lee 2010)
+                opt_total_borate=2, # Lee et al. 2010
+                opt_k_fluoride=2, # Perez and Fraga 1987
+                opt_buffers_mode=1,
+                )
+ 
+
+test_pH - new_pH
+plt.hist(new_pH - test_pH)
+np.mean(new_pH - test_pH)
+
+plt.hist(argo_wmo[wmo_n].PH_IN_SITU_TOTAL_ADJUSTED[:,index_1500] - test_pH)
+np.mean(argo_wmo[wmo_n].PH_IN_SITU_TOTAL_ADJUSTED[:,index_1500] - test_pH)

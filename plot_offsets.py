@@ -49,6 +49,11 @@ for line in lines:
 # Set the paths
 output_dir = 'output/'
 data_dir = 'data/'
+
+# Check for a glodap_offsets_plots directory, create if it does not exist
+offset_dir = output_dir + 'glodap_offset_plots/'
+if not os.path.isdir(offset_dir):
+    os.mkdir(offset_dir)
 # -
 
 # load glodap and float offsets and plot
@@ -129,7 +134,7 @@ for n,g in offsets_g:
     axn.scatter(g.PSAL_ADJUSTED_glodap,g.TEMP_ADJUSTED_glodap,c=g.DOXY_ADJUSTED_offset)
     axn.set_title('GDAP Pdens vs offset')
     
-    plt.savefig(output_dir+str(g.main_float_wmo.values[0])+'_v_glodap.png')
+    plt.savefig(offset_dir+str(g.main_float_wmo.values[0])+'_v_glodap.png')
     plt.clf()
   
 # -
@@ -181,6 +186,9 @@ glodap_offsets['project_name'] = xr.DataArray(dims=['N_CROSSOVERS'],coords={'N_C
 glodap_offsets['plat_type'] = xr.DataArray(dims=['N_CROSSOVERS'],coords={'N_CROSSOVERS':range(glodap_offsets.main_float_wmo.shape[0])}).astype(str)
 glodap_offsets['data_centre'] = xr.DataArray(dims=['N_CROSSOVERS'],coords={'N_CROSSOVERS':range(glodap_offsets.main_float_wmo.shape[0])}).astype(str)
 
+num_crossovers = glodap_offsets.main_float_wmo.size
+
+# I think this reloads the Sprof file for each individual crossover, this seems inefficient
 for i,g in enumerate(glodap_offsets.main_float_wmo):
     
     #find full float file matching offset
@@ -261,6 +269,7 @@ for i,g in enumerate(glodap_offsets.main_float_wmo):
     glodap_offsets.plat_type[i] = prof_og.PLATFORM_TYPE.values.astype(str)[0]
     glodap_offsets.data_centre[i] = prof_og.DATA_CENTRE.values.astype(str)[0]
 
+    print(str(i) + ' out of ' + str(num_crossovers))
 #save offsets with cal info
 glodap_offsets.to_netcdf(output_dir+'glodap_offsets_withcalibration.nc')
     
@@ -270,6 +279,8 @@ glodap_offsets.to_netcdf(output_dir+'glodap_offsets_withcalibration.nc')
 
 #load saved offsets
 glodap_offsets = xr.load_dataset(output_dir+'glodap_offsets_withcalibration.nc')
+
+glodap_offsets.main_float_wmo
 
 #create meta groups based on calibration groups (air cal, no air cal, no cal)
 g = glodap_offsets.o2_calib_group.copy(deep=True)
@@ -281,6 +292,56 @@ glodap_offsets['o2_calib_air'] = xr.where(glodap_offsets.o2_calib_group=='bad','
 # -
 
 # Group offsets by chosen float metadata and plot histograms
+
+# +
+glodap_offsets['o2_calib_air_key'] = xr.where(glodap_offsets.o2_calib_air=='air cal',1,0)
+
+glodap_offsets['o2_not_air_key'] = xr.where(glodap_offsets.o2_calib_air=='not air',-1,0)
+glodap_offsets['o2_cal_key'] = glodap_offsets['o2_calib_air_key'] + glodap_offsets['o2_not_air_key']
+# -
+
+plt.hist(glodap_offsets.o2_cal_key)
+
+glodap_offsets.groupby("main_float_wmo")[3901668].o2_calib_comment
+
+wmo_group = glodap_offsets.groupby('main_float_wmo')
+list(glodap_offsets.groupby('main_float_wmo'))
+
+glodap_offsets.groupby("main_float_wmo")[1900722]
+
+wmo_means = glodap_offsets.groupby('main_float_wmo').mean(...)
+
+# +
+a = (wmo_means.where(wmo_means.o2_cal_key>0.6))
+print(a.DOXY_ADJUSTED_offset.median())
+print(a.DOXY_ADJUSTED_offset.mean())
+
+#np.isnan(a.DOXY_ADJUSTED_offset).sum(1)
+print(a.DOXY_ADJUSTED_offset.count())
+plt.hist(a.DOXY_ADJUSTED_offset, bins=np.linspace(-20, 20, 41),)
+plt.title('Air Cal Offsets, first averaged by float')
+plt.grid()
+
+plt.savefig(offset_dir + 'Glodap_offsets_doxy_air_cal_averaged_by_float.png')
+
+# -
+
+fig = plt.figure(figsize=(20,12))
+ax = plt.axes(projection=ccrs.PlateCarree())
+ax.coastlines()
+ax.set_global()
+sct = plt.scatter(a.main_float_longitude, 
+                a.main_float_latitude, 
+                c=a.DOXY_ADJUSTED_offset,cmap='RdBu_r',s=40,vmin=-6,vmax=6)
+cbar = plt.colorbar(sct, fraction=.08, pad = 0.04, shrink=0.5)
+cbar.set_label('O2 offset', labelpad=15, fontsize=14)
+#plt.scatter(glodap_offsets.glodap_longitude,glodap_offsets.glodap_longitude,s=4)
+plt.savefig(offset_dir+ 'map_o2_offsets_air_only.png')
+plt.show()
+
+plt.hist(wmo_means['DOXY_ADJUSTED_offset'], bins=np.linspace(-20, 20, 61),label=str(n))
+print(np.around(wmo_means['DOXY_ADJUSTED_offset'].median().values, decimals=2))
+plt.title('All Offsets, first averaged by float')
 
 # +
 # which metadata variable to group by
@@ -306,7 +367,7 @@ for n,group in offsets_g:
     plt.grid()
     plt.xlabel('DOXY Offset')
     plt.title('mean: ' + str(grp_mean.values) + ' \pm ' + str(grp_std.values) + '; median: ' + str(grp_med.values))
-    plt.savefig(output_dir + 'Glodap_offsets_doxy_'+group_variable+'_'+str(n)+'.png')
+    plt.savefig(offset_dir + 'Glodap_offsets_doxy_'+group_variable+'_'+str(n)+'.png')
     plt.clf()
     
 
@@ -330,7 +391,7 @@ for n,group in offsets_g:
 
 plt.xlabel('DOXY Offset')
 plt.legend()
-plt.savefig(output_dir + 'Glodap_offsets_doxy_all_'+group_variable+'.png')
+plt.savefig(offset_dir + 'Glodap_offsets_doxy_all_'+group_variable+'.png')
 # -
 
 # Plot histograms of all global glodap offsets combined
@@ -338,7 +399,7 @@ plt.savefig(output_dir + 'Glodap_offsets_doxy_all_'+group_variable+'.png')
 plt.figure(figsize=(20,12))
 plt.hist(glodap_offsets.DOXY_ADJUSTED_offset, bins=np.linspace(-400, 400, 401))
 plt.xlabel('DOXY Offset')
-plt.savefig(output_dir + 'Glodap_offsets_doxy_plus_minus_400.png')
+plt.savefig(offset_dir + 'Glodap_offsets_doxy_plus_minus_400.png')
 
 
 #check location of O2 offsets > 100
@@ -355,7 +416,7 @@ sct = plt.scatter(glodap_offsets.main_float_longitude,
 cbar = plt.colorbar(sct, fraction=.08, pad = 0.04, shrink=0.5)
 cbar.set_label('O2 offset', labelpad=15, fontsize=14)
 plt.scatter(glodap_offsets.glodap_longitude,glodap_offsets.glodap_longitude,s=4)
-plt.savefig(output_dir+ 'map_o2_offsets_100.png')
+plt.savefig(offset_dir+ 'map_o2_offsets_100.png')
 plt.show()
 
 # +
@@ -368,7 +429,7 @@ plt.grid()
     
 plt.title('Mean: ' + str(nmean))
 plt.xlabel('NITRATE Offset')
-plt.savefig(output_dir + 'Glodap_offsets_nitrate_plus_minus_400.png')
+plt.savefig(offset_dir + 'Glodap_offsets_nitrate_plus_minus_400.png')
 
 
 # +
@@ -381,7 +442,7 @@ plt.grid()
     
 plt.title('Mean: ' + str(nmean))
 plt.xlabel('DIC Offset')
-plt.savefig(output_dir + 'Glodap_offsets_DIC.png')
+plt.savefig(offset_dir + 'Glodap_offsets_DIC.png')
 # -
 
 glodap_offsets
@@ -432,7 +493,7 @@ for wmo, group in argo_wmo:
 
         plt.grid(linestyle=':')
         plt.legend()
-        plt.savefig(output_dir+str(wmo)+'_v_float.png')
+        plt.savefig(offset_dir+str(wmo)+'_v_float.png')
         plt.clf()
         
     elif len(fl_inds)==0:
@@ -460,7 +521,7 @@ for wmo, group in argo_wmo:
         
         plt.grid(linestyle=':')
         plt.legend()
-        plt.savefig(output_dir+str(wmo)+'_v_glodap.png')
+        plt.savefig(offset_dir+str(wmo)+'_v_glodap.png')
         plt.clf()
         
     else:
@@ -493,5 +554,5 @@ for wmo, group in argo_wmo:
         
         plt.grid(linestyle=':')
         plt.legend()
-        plt.savefig(output_dir+str(wmo)+'_v_float_and_glodap.png')
+        plt.savefig(offset_dir+str(wmo)+'_v_float_and_glodap.png')
         plt.clf()
