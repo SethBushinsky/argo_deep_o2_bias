@@ -6,9 +6,9 @@
 #       extension: .py
 #       format_name: light
 #       format_version: '1.5'
-#       jupytext_version: 1.14.0
+#       jupytext_version: 1.13.8
 #   kernelspec:
-#     display_name: Python 3 (ipykernel)
+#     display_name: Python 3
 #     language: python
 #     name: python3
 # ---
@@ -290,11 +290,33 @@ argo_interp = xr.open_dataset(data_dir+'argo_interp_temp.nc')
 argo_wmo = argo_interp.groupby('wmo')
 
 # +
+# checking for inconsistencies in interpolated vs. derived lengths
+
+pH_count = 0;
+# load float files, use offset information to calculate impact 
+for n in range(2,3): #range(0, len(a.main_float_wmo)):
+    wmo_n = int(a.main_float_wmo[n].values)
+    
+    argo_derived_n = xr.load_dataset(argo_path+ 'derived/' + str(wmo_n) + '_derived.nc')
+
+    print(str(n) + ': ' + str(a.main_float_wmo[n].values))
+
+    print(argo_wmo[wmo_n].PRES_ADJUSTED.shape)
+    print(argo_derived_n.PRES_ADJUSTED.shape)
+    print(' ')
+    
+# -
+
+argo_derived_n.PRES_ADJUSTED[0,:]
+
+argo_wmo[wmo_n].TEMP_ADJUSTED[:,0]
+
+# +
 LIPHR_path = liar_dir
 
 pH_count = 0;
 # load float files, use offset information to calculate impact 
-for n in range(37, 38):#len(a.main_float_wmo)):
+for n in range(37,38): #range(0, len(a.main_float_wmo)):
     wmo_n = int(a.main_float_wmo[n].values)
     
     argo_derived_n = xr.load_dataset(argo_path+ 'derived/' + str(wmo_n) + '_derived.nc')
@@ -357,10 +379,19 @@ for n in range(37, 38):#len(a.main_float_wmo)):
 
     argo_derived_n['pH_O2_ADJUST_LIPHR'] = (['N_PROF'],np.empty(argo_derived_n.PRES_ADJUSTED.shape[0])) #nprof x nlevel
     argo_derived_n.pH_O2_ADJUST_LIPHR[:] = new_pH[:,0]
+    # difference between pH_O2_orig_LIPHR and PH_IN_SITU_TOTAL_ADJUSTED- should that average 0? 
+    # Impact of O2 can be seen in the test_pH minus new_pH average 
     
     argo_derived_n['PH_IN_SITU_TOTAL_ADJUSTED_w_O2_ADJUST_OFFSET'] = \
         argo_derived_n.PH_IN_SITU_TOTAL_ADJUSTED + np.mean(new_pH - test_pH)
+    
+    argo_derived_n.to_netcdf(argo_path+ 'derived/' + str(wmo_n) + '_derived_2.nc')
+
 # -
+
+argo_wmo[5904659]
+
+argo_derived_n
 
         #call CO2sys to calculate pCO2 with bias correction and no O2 correction (check against original)
         results = pyco2.sys(
@@ -382,7 +413,7 @@ for n in range(37, 38):#len(a.main_float_wmo)):
                 opt_k_fluoride=2, # Perez and Fraga 1987
                 opt_buffers_mode=1,
                 )
- 
+
 
 test_pH - new_pH
 plt.hist(new_pH - test_pH)
