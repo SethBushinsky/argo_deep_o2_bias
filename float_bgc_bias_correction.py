@@ -6,9 +6,9 @@
 #       extension: .py
 #       format_name: light
 #       format_version: '1.5'
-#       jupytext_version: 1.14.0
+#       jupytext_version: 1.13.8
 #   kernelspec:
-#     display_name: Python 3 (ipykernel)
+#     display_name: Python 3
 #     language: python
 #     name: python3
 # ---
@@ -189,23 +189,6 @@ results = carbon_utils.LIPHR_matlab(LIPHR_path,
 
 gdap['pH_in_situ_total'] = results
 gdap.pH_in_situ_total[np.isnan(gdap.G2phts25p0)] = np.nan
-# -
-
-Coordinates = np.stack((gdap.G2longitude.values.flatten(), 
-                        gdap.G2latitude.values.flatten(), 
-                        gdap.G2pressure.values.flatten()),
-                        axis=1)
-np.shape(Coordinates)
-
-# +
-Measurements = np.stack((gdap.G2salinity.values.flatten(), 
-                         gdap.G2temperature.values.flatten(), 
-                         gdap.G2nitrate.values.flatten(), 
-                         gdap.G2oxygen.values.flatten()),
-                         axis=1)
-MeasIDVec = [1, 7, 3, 6]
-
-np.shape(Measurements)
 
 # +
 # gdap pH 25C 
