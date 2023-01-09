@@ -6,7 +6,7 @@
 #       extension: .py
 #       format_name: light
 #       format_version: '1.5'
-#       jupytext_version: 1.13.8
+#       jupytext_version: 1.11.3
 #   kernelspec:
 #     display_name: Python 3
 #     language: python
@@ -116,13 +116,9 @@ var_list_plot = ['PRES_ADJUSTED','TEMP_ADJUSTED','PSAL_ADJUSTED','DOXY_ADJUSTED'
 
 # ## 1. Download and process GLODAP data
 
+# +
 gdap = fl.get_glodap(data_dir, year = 2021)
 gdap.G2longitude[gdap.G2longitude < 0.] = gdap.G2longitude[gdap.G2longitude < 0.] + 360.
-
-
-# GLODAP derived variables: density, MLD and pH
-
-# +
 #set flagged data to NaN (is this needed? or masked array better?)
 flagvars = ['G2salinity','G2oxygen','G2nitrate','G2tco2','G2talk','G2phts25p0']
 
@@ -130,27 +126,20 @@ for v in flagvars:
     flag = v+'f'
     naninds = gdap[flag]!=2
     gdap[v][naninds] = np.nan
+# -
+
+
+# GLODAP derived variables: density, MLD and pH
+
+#calc potential density
+gdap['sigma0_calculated'] = carbon_utils.sigma0(gdap.G2salinity.values,gdap.G2temperature.values,
+                                  gdap.G2longitude.values,gdap.G2latitude.values,gdap.G2pressure.values)
+#calculate spice
+gdap['spice'] = carbon_utils.spiciness0(gdap.G2salinity.values,gdap.G2temperature.values,
+                                  gdap.G2longitude.values,gdap.G2latitude.values,gdap.G2pressure.values)
 
 # +
-#calc potential density from T and S
-#double check calculated sigma0 matches sigma0 in glodap file
-#calc potential density 
-SA = gsw.SA_from_SP(gdap.G2salinity.values,
-                            gdap.G2pressure.values,
-                            gdap.G2longitude.values,
-                            gdap.G2latitude.values)
-
-CT = gsw.CT_from_t(SA,
-                           gdap.G2temperature.values,
-                           gdap.G2pressure.values)
-
-gdap['sigma0_calculated'] = gsw.sigma0(SA,CT)
-
-#calculate spice as well
-gdap['spice'] = gsw.spiciness0(SA,CT)
-
-# +
-###make into separate function?
+###IS THIS NEEDED? CAN REMOVE?
 #iterate over grouped data to calc MLD
 #need to group by cruise and station first
 gdap_s = gdap.groupby(['G2cruise','G2station','G2cast'])
@@ -189,33 +178,9 @@ results = carbon_utils.LIPHR_matlab(LIPHR_path,
 
 gdap['pH_in_situ_total'] = results
 gdap.pH_in_situ_total[np.isnan(gdap.G2phts25p0)] = np.nan
-
-# +
 # gdap pH 25C 
-#   *SOCCOM* version modified by Nancy Williams on 10/15/15 according to
-#    Dickson in 9/7/15 e-mail and in Dickson et al. 2007 
-#    changed KF to Perez and Fraga 1987
-#    Last three inputs should be ... 1,10,3)
-results = pyco2.sys(
-    par1=2300., 
-    par2=gdap.pH_in_situ_total,
-    par1_type=1,
-    par2_type=3,
-    temperature=gdap.G2temperature, 
-    pressure=gdap.G2pressure, 
-    salinity=gdap.G2salinity, 
-    temperature_out=25., #fixed 25C temperature
-    pressure_out=gdap.G2pressure,
-    opt_pH_scale = 1, #total
-    opt_k_carbonic=10, #Lueker et al. 2000
-    opt_k_bisulfate=1, # Dickson 1990 (Note, matlab co2sys combines KSO4 with TB. option 3 = KSO4 of Dickson & TB of Lee 2010)
-    opt_total_borate=2, # Lee et al. 2010
-    opt_k_fluoride=2, # Perez and Fraga 1987
-    opt_buffers_mode=1, # used to be "buffers_mode='auto'" but seems to have changed in versions of pyco2?
-)
-
-
-gdap['pH_25C_TOTAL_ADJUSTED'] = results['pH_total_out']
+gdap['pH_25C_TOTAL_ADJUSTED'] = carbon_utils.co2sys_pH25C(gdap.pH_in_situ_total,gdap.G2temperature,
+                                                         gdap.G2salinity,gdap.G2pressure)
 #set pH to nan where there was no original pH data from GLODAP
 gdap.pH_25C_TOTAL_ADJUSTED[np.isnan(gdap.G2phts25p0)]=np.nan
 # -
@@ -235,6 +200,7 @@ argolist = []
 for file in os.listdir(argo_path):
     if file.endswith('Sprof.nc'):
         argolist.append(file)
+argolist.sort()
 LIAR_path = liar_dir
 
 #float QC data fields
@@ -242,6 +208,10 @@ qc_data_fields = ['TEMP_ADJUSTED', 'PSAL_ADJUSTED', 'DOXY_ADJUSTED', 'NITRATE_AD
 
 bgc_data_fields = ['DOXY_ADJUSTED', 'NITRATE_ADJUSTED', 'PH_IN_SITU_TOTAL_ADJUSTED']
 
+#variables to save to derived file
+derived_list = ['TEMP_ADJUSTED', 'PSAL_ADJUSTED', 'DOXY_ADJUSTED', 'NITRATE_ADJUSTED', 'PH_IN_SITU_TOTAL_ADJUSTED',
+            'pH_25C_TOTAL_ADJUSTED', 'pH_25C_corr', 'PDENS', 'spice', 'PRES_ADJUSTED', 'DIC','TALK_LIAR',
+            'pCO2','pCO2_pH_corr']
 #variables to do crossover calculation
 var_list = ['TEMP_ADJUSTED', 'PSAL_ADJUSTED', 'DOXY_ADJUSTED', 'NITRATE_ADJUSTED', 'PH_IN_SITU_TOTAL_ADJUSTED',
             'pH_25C_TOTAL_ADJUSTED', 'pH_25C_corr', 'PDENS', 'spice', 'PRES_ADJUSTED', 'DIC','TALK_LIAR',
@@ -257,16 +227,13 @@ if append_data==1 and os.path.exists(data_dir+'argo_interp_temp.nc'):
     #extract wmo #s as integers from argolist
     s = [int(s) for s in re.findall("[0-9]+", str(argolist))]
     
-    #find indices of argolist where argo_interp has matching wmos - don't need to run these again
+    #find indices of argolist where argo_interp has no existing matching wmos
     indices = [s.index(i) for i in s if i not in argo_interp.wmo]
-    
-    #set start_index to first argolist index not found in argo_interp
-    start_index = indices[0]
-
+    argolist_run = [argolist[i] for i in indices]
 else:
-    #argolist=argolist_orig
-    start_index=0            
-                    
+    argolist_run=argolist
+          
+
 #####
 #iterate through each float file 
 #calculates derived carbonate parameters (currently TALK, DIC), bias corrected pH and stores all in argo_n
@@ -274,11 +241,10 @@ else:
 #saves out individual float netcdf files with variables to be adjusted/used for crossovers
 #appends 1m interpolated dataset in argo_interp for comparison to glodap (not saved currently)
 
-
 wmo_list= list()
-for n in range(start_index,len(argolist)):
-    print(str(n)+' Processing float file '+ argolist[n])
-    argo_n = xr.load_dataset(argo_path+argolist[n])
+for n in range(len(argolist_run)):
+    print(str(n)+' Processing float file '+ argolist_run[n])
+    argo_n = xr.load_dataset(argo_path+argolist_run[n])
     argo_n = argo_n.set_coords(('PRES_ADJUSTED','LATITUDE','LONGITUDE','JULD'))
 
     wmo_n = argo_n.PLATFORM_NUMBER.values.astype(int)[0]
@@ -324,7 +290,7 @@ for n in range(start_index,len(argolist)):
     argo_n['spice'] = (['N_PROF','N_LEVELS'],np.empty(argo_n.PRES_ADJUSTED.shape)) #nprof x nlevel
     argo_n.spice[:] = np.nan
     
-    #initialise interpolated dataset
+    #initialise interpolated dataset for float
     nan_interp = np.empty((nprof_n,p_interp.shape[0]))
     nan_interp[:] = np.nan
     argo_interp_n = xr.Dataset()
@@ -337,7 +303,6 @@ for n in range(start_index,len(argolist)):
     argo_interp_n['num_var'] = (['N_PROF'],np.zeros((nprof_n))) # changed from np.empty to np.zeros to avoid filling array with random large numbers
     for v in var_list:
         argo_interp_n[v] = (['N_PROF','N_LEVELS'],np.copy(nan_interp))
-    
 
     #check first if PH_IN_SITU_TOTAL_ADJUSTED exists
     if 'PH_IN_SITU_TOTAL_ADJUSTED' in argo_n.keys() and np.any(~np.isnan(argo_n.PH_IN_SITU_TOTAL_ADJUSTED)):
@@ -429,8 +394,7 @@ for n in range(start_index,len(argolist)):
            
         argo_n['pH_25C_TOTAL_ADJUSTED'] = (['N_PROF','N_LEVELS'],results['pH'])
         argo_n['DIC'] = (['N_PROF','N_LEVELS'],results['dic'])  
-        # Note that this calculates pCO2 as though the SST is 25C, probably should change/remove
-        argo_n['pCO2'] = (['N_PROF','N_LEVELS'],results['pCO2_out'])  
+
         
         for p in range(nprof_n):
             
@@ -487,19 +451,17 @@ for n in range(start_index,len(argolist)):
     for p in range(nprof_n):
         #pressure for profile
         p_prof = argo_n.PRES_ADJUSTED[p,:]
-        
-        #calc potential density 
-        SA = gsw.SA_from_SP(argo_n.PSAL_ADJUSTED[p,:].values,
-                            argo_n.PRES_ADJUSTED[p,:].values,
-                            argo_n.LONGITUDE[p].values,
-                            argo_n.LATITUDE[p].values)
 
-        CT = gsw.CT_from_t(SA,
-                           argo_n.TEMP_ADJUSTED[p,:].values,
-                           argo_n.PRES_ADJUSTED[p,:].values)
-
-        argo_n['PDENS'][p,:] = gsw.sigma0(SA,CT)
-        argo_n['spice'][p,:] = gsw.spiciness0(SA,CT)
+        argo_n['PDENS'][p,:] = carbon_utils.sigma0(argo_n.PSAL_ADJUSTED[p,:].values,
+                                                   argo_n.TEMP_ADJUSTED[p,:].values,
+                                                  argo_n.LONGITUDE[p].values,
+                                                  argo_n.LATITUDE[p].values,
+                                                  argo_n.PRES_ADJUSTED[p,:].values)
+        argo_n['spice'][p,:] = carbon_utils.spiciness0(argo_n.PSAL_ADJUSTED[p,:].values,
+                                                   argo_n.TEMP_ADJUSTED[p,:].values,
+                                                  argo_n.LONGITUDE[p].values,
+                                                  argo_n.LATITUDE[p].values,
+                                                  argo_n.PRES_ADJUSTED[p,:].values)
 
         #for each profile get pressure values >100db
         p100 = p_prof[p_prof>100.].values
@@ -514,7 +476,7 @@ for n in range(start_index,len(argolist)):
             if (vname in argo_n.keys()) and (np.any(~np.isnan(argo_n[vname]))):
                 var_list_n.append(vname)
                 
-        argo_interp_n['num_var'][p] = len(var_list_n) # changed to argo_interp_n from argo_interp
+        argo_interp_n['num_var'][p] = len(var_list_n) 
         
         for var in var_list_n:
             var100 = argo_n[var][p,p_prof>100.]
@@ -576,11 +538,10 @@ for n in range(start_index,len(argolist)):
     argo_n_derived['LONGITUDE'] = (['N_PROF'],argo_n.LONGITUDE.values)
     argo_n_derived['LATITUDE'] = (['N_PROF'],argo_n.LATITUDE.values)
     argo_n_derived['JULD_LOCATION'] = (['N_PROF'],argo_n.JULD_LOCATION.values)
-    for var in var_list:
+    for var in derived_list:
         if var in argo_n.keys():
             argo_n_derived[var] = (['N_PROF','N_LEVELS'],argo_n[var].values)
     argo_n_derived.to_netcdf(argo_path_derived+str(wmo_n)+'_derived.nc')
-    #should we add pCO2 to the saved derived file?
     
     #Also save interpolated dataset as one mega Dataset for doing crossovers
     if n == 0:
