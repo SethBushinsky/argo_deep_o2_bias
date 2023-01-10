@@ -6,9 +6,9 @@
 #       extension: .py
 #       format_name: light
 #       format_version: '1.5'
-#       jupytext_version: 1.14.0
+#       jupytext_version: 1.11.3
 #   kernelspec:
-#     display_name: Python 3 (ipykernel)
+#     display_name: Python 3
 #     language: python
 #     name: python3
 # ---
@@ -81,9 +81,10 @@ for n,g in offsets_g:
     axn = plt.subplot(5,2,1)
     axn.plot(g.main_float_longitude,g.main_float_latitude,'g+',markersize=10,label='Current float')
     #glodap
-    glodap_lon = xr.where(g.glodap_longitude<0,g.glodap_longitude+360.,g.glodap_longitude)
+    glodap_lon = xr.where(g.glodap_longitude>180,g.glodap_longitude-360.,g.glodap_longitude)
     axn.plot(glodap_lon,g.glodap_latitude,'ro',label = 'Glodap',markersize=10)
-    axn.set_title('N crossovers: %d' % ncross)
+    axn.legend()
+    axn.set_title('WMO: %d, N crossovers: %d' % (g.main_float_wmo.values[0],ncross))
     
     #plot o2 offsets
     axn = plt.subplot(5,2,2)
@@ -102,35 +103,35 @@ for n,g in offsets_g:
     axn = plt.subplot(5,1,3)
     axn.plot(g.glodap_datetime,g.DOXY_ADJUSTED_offset,'rx')
     axn.axhline(y=0, color='k', linestyle='--')
-    axn.set_title('Offsets vs float date') 
+    axn.set_title('Offsets vs glodap date') 
     
     #vs pressure 
-    axn = plt.subplot(5,3,7)
+    axn = plt.subplot(5,3,10)
     axn.plot(g.DOXY_ADJUSTED_offset,g.PRES_ADJUSTED_float,'bx')
     axn.set_title('Float pres vs offset')
     plt.gca().invert_yaxis()
     axn.set_ylabel('pres')
     
-    axn = plt.subplot(5,3,8)
+    axn = plt.subplot(5,3,11)
     axn.plot(g.DOXY_ADJUSTED_offset,g.PRES_ADJUSTED_glodap,'bx')
     axn.set_title('GDAP pres vs offset')
     plt.gca().invert_yaxis()
     
     #vs density 
-    axn = plt.subplot(5,3,10)
+    axn = plt.subplot(5,3,13)
     axn.plot(g.DOXY_ADJUSTED_offset,g.PDENS_float,'bx')
     axn.set_title('Float Pdens vs offset')
     axn.set_ylabel('dens')
     
-    axn = plt.subplot(5,3,11)
+    axn = plt.subplot(5,3,14)
     axn.plot(g.DOXY_ADJUSTED_offset,g.PDENS_glodap,'bx')
     axn.set_title('GDAP Pdens vs offset')
     
-    axn = plt.subplot(5,3,9)
+    axn = plt.subplot(5,3,12)
     axn.scatter(g.PSAL_ADJUSTED_float,g.TEMP_ADJUSTED_float,c=g.DOXY_ADJUSTED_offset)
     axn.set_title('GDAP Pdens vs offset')
     
-    axn = plt.subplot(5,3,12)
+    axn = plt.subplot(5,3,15)
     axn.scatter(g.PSAL_ADJUSTED_glodap,g.TEMP_ADJUSTED_glodap,c=g.DOXY_ADJUSTED_offset)
     axn.set_title('GDAP Pdens vs offset')
     
