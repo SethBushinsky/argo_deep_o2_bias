@@ -179,7 +179,7 @@ results = carbon_utils.LIPHR_matlab(LIPHR_path,
 gdap['pH_in_situ_total'] = results
 gdap.pH_in_situ_total[np.isnan(gdap.G2phts25p0)] = np.nan
 # gdap pH 25C 
-gdap['pH_25C_TOTAL_ADJUSTED'] = carbon_utils.co2sys_pH25C(gdap.pH_in_situ_total,gdap.G2temperature,
+gdap['pH_25C_TOTAL_ADJUSTED'] = carbon_utils.co2sys_pH25C(2300.,gdap.pH_in_situ_total,gdap.G2temperature,
                                                          gdap.G2salinity,gdap.G2pressure)
 #set pH to nan where there was no original pH data from GLODAP
 gdap.pH_25C_TOTAL_ADJUSTED[np.isnan(gdap.G2phts25p0)]=np.nan
@@ -391,7 +391,7 @@ for n in range(len(argolist_run)):
                 opt_k_fluoride=2, # Perez and Fraga 1987
                 opt_buffers_mode=1,
         )
-           
+        
         argo_n['pH_25C_TOTAL_ADJUSTED'] = (['N_PROF','N_LEVELS'],results['pH'])
         argo_n['DIC'] = (['N_PROF','N_LEVELS'],results['dic'])  
 
@@ -424,7 +424,7 @@ for n in range(len(argolist_run)):
                 argo_n.pH_insitu_corr[p,:] = argo_n.PH_IN_SITU_TOTAL_ADJUSTED[p,:]+argo_n.bias_corr[p]
                 argo_n.pH_25C_corr[p,:] = argo_n.pH_25C_TOTAL_ADJUSTED[p,:]+argo_n.bias_corr[p]
     
-        #call CO2sys again to get pCO2 with corrected PH
+        #call CO2sys again to get pCO2 with corrected PH- do we need to include this here?
         results = pyco2.sys(
                 par1=argo_n.TALK_LIAR, 
                 par2=argo_n.pH_insitu_corr,
@@ -558,14 +558,13 @@ for n in range(len(argolist_run)):
 # ## 3. Compare float - GLODAP crossovers
 
 # +
-#float- GLODAP crossover 
+plot_profile = 1
 
 #restrict glodap data to comparison pressure range
 gdap_p = gdap[(gdap.PRES_ADJUSTED.values>p_compare_min) & (gdap.PRES_ADJUSTED.values<p_compare_max)]
 
 #load saved argo_interp data if needed
 argo_interp = xr.open_dataset(data_dir+'argo_interp_temp.nc')
-
 #group by float wmo
 argo_wmo = argo_interp.groupby('wmo')
 
@@ -705,8 +704,13 @@ for wmo, group in argo_wmo:
             gdap_offsets[len(var_list_plot)*3+7].append(gdap_match.LATITUDE.values[m])
             #can add additional float metadata variable to list here
     
-    #plot profiles and offsets to check density match up
-    #plt.subplots(4,1,1)
+        #optional: plot individual profiles and offsets to check density match up
+        if plot_prof == True:
+            
+            fig = plt.figure(figsize=(8,16))
+            
+            axn = plt.subplot(3,2,1)
+            
     
 
 
