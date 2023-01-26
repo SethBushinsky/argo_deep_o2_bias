@@ -179,7 +179,7 @@ results = carbon_utils.LIPHR_matlab(LIPHR_path,
 gdap['pH_in_situ_total'] = results
 gdap.pH_in_situ_total[np.isnan(gdap.G2phts25p0)] = np.nan
 # gdap pH 25C 
-gdap['pH_25C_TOTAL_ADJUSTED'] = carbon_utils.co2sys_pH25C(gdap.pH_in_situ_total,gdap.G2temperature,
+gdap['pH_25C_TOTAL_ADJUSTED'] = carbon_utils.co2sys_pH25C(2300.,gdap.pH_in_situ_total,gdap.G2temperature,
                                                          gdap.G2salinity,gdap.G2pressure)
 #set pH to nan where there was no original pH data from GLODAP
 gdap.pH_25C_TOTAL_ADJUSTED[np.isnan(gdap.G2phts25p0)]=np.nan
@@ -391,7 +391,7 @@ for n in range(len(argolist_run)):
                 opt_k_fluoride=2, # Perez and Fraga 1987
                 opt_buffers_mode=1,
         )
-           
+        
         argo_n['pH_25C_TOTAL_ADJUSTED'] = (['N_PROF','N_LEVELS'],results['pH'])
         argo_n['DIC'] = (['N_PROF','N_LEVELS'],results['dic'])  
 
@@ -424,7 +424,7 @@ for n in range(len(argolist_run)):
                 argo_n.pH_insitu_corr[p,:] = argo_n.PH_IN_SITU_TOTAL_ADJUSTED[p,:]+argo_n.bias_corr[p]
                 argo_n.pH_25C_corr[p,:] = argo_n.pH_25C_TOTAL_ADJUSTED[p,:]+argo_n.bias_corr[p]
     
-        #call CO2sys again to get pCO2 with corrected PH
+        #call CO2sys again to get pCO2 with corrected PH- do we need to include this here?
         results = pyco2.sys(
                 par1=argo_n.TALK_LIAR, 
                 par2=argo_n.pH_insitu_corr,
@@ -558,14 +558,14 @@ for n in range(len(argolist_run)):
 # ## 3. Compare float - GLODAP crossovers
 
 # +
-#float- GLODAP crossover 
+#toggle to plot offsets profile by profile
+plot_profile = 1
 
 #restrict glodap data to comparison pressure range
 gdap_p = gdap[(gdap.PRES_ADJUSTED.values>p_compare_min) & (gdap.PRES_ADJUSTED.values<p_compare_max)]
 
 #load saved argo_interp data if needed
 argo_interp = xr.open_dataset(data_dir+'argo_interp_temp.nc')
-
 #group by float wmo
 argo_wmo = argo_interp.groupby('wmo')
 
@@ -649,14 +649,24 @@ for wmo, group in argo_wmo:
 
         
         #find index of interp profile density that most closely matches each glodap match point density
+        dens_inds = np.empty(match_inds.shape[0],dtype=int)
+        o2_offsets = np.empty(match_inds.shape[0])
+        o2_offsets[:] = np.nan
+        dens_offsets = np.empty(match_inds.shape[0])
+        o2_offsets[:] = np.nan
         for m in range(len(match_inds)):
             #if no interpolated density (not deep enough) then move on to next profile
             if np.all(np.isnan(group.PDENS.values[n,:])) or np.isnan(gdap_match.PDENS.values[m]):
+                print('no interpolated density in depth range')
+                dens_inds[m]=-1
                 continue
                 
             #calculate density difference and nearest density index
             dens_diff = np.absolute(group.PDENS.values[n,:]-gdap_match.PDENS.values[m])
             dens_ind = np.nanargmin(dens_diff)
+
+            dens_inds[m] = dens_ind #save indices for plotting 
+
             
             #don't use matches if the density difference to the closest matching density value exceeds delta_dens
             if dens_diff[dens_ind] > delta_dens:
@@ -680,7 +690,13 @@ for wmo, group in argo_wmo:
                     gdap_offset_ind = gdap_match[var].index[m]
                     offset = group[var][n,dens_ind] - gdap_match[var][gdap_offset_ind]
                     
-                    #append to offset list
+                    #save offsets for optional plotting
+                    if var=='DOXY_ADJUSTED':
+                        o2_offsets[m] = offset.values
+                    elif var=='PDENS':
+                        dens_offsets[m] = offset.values
+                        
+                    #append to full offset list
                     gdap_offsets[idx*3].append(offset.values)
                     
                     #also save absolute glodap value at crossover
@@ -704,10 +720,112 @@ for wmo, group in argo_wmo:
             gdap_offsets[len(var_list_plot)*3+6].append(group.LATITUDE[n].values)
             gdap_offsets[len(var_list_plot)*3+7].append(gdap_match.LATITUDE.values[m])
             #can add additional float metadata variable to list here
-    
-    #plot profiles and offsets to check density match up
-    #plt.subplots(4,1,1)
-    
+     
+        ################################
+        #optional: plot individual profiles and offsets to check density match up
+        if plot_profile == 1:
+            #if no interpolated density (not deep enough) then move on to next profile
+            if np.all(np.isnan(group.PDENS.values[n,:])) or np.isnan(gdap_match.PDENS.values[m]):
+                continue
+                
+            print('Plotting float '+str(group.wmo[0].values) + ' profile' + str(group.profile[n].values))
+            fig = plt.figure(figsize=(8,16))
+            
+            #DOXY_ADJUSTED
+            dens_inds = dens_inds[dens_inds>0] #only keep valid indices
+            
+            axn = plt.subplot(3,2,1)
+            #plot float profile and matchups
+            axn.scatter(group.DOXY_ADJUSTED[n,:],group.PRES_ADJUSTED[n,:],s=4,c='orangered',marker='o')
+            axn.scatter(group.DOXY_ADJUSTED[n,dens_inds],group.PRES_ADJUSTED[n,dens_inds],s=50,c='k',marker='s')
+            #plot glodap profiles and matchups- (split glodap into profiles by cruise and station?)
+
+            for m in range(len(match_inds)):
+                gdap_offset_ind = gdap_match[var].index[m]
+
+                cruise = gdap_match.G2cruise[gdap_offset_ind]
+                stat = gdap_match.G2station[gdap_offset_ind]
+                #plot all glodap data that match these cruise and stations
+                axn.plot(gdap.loc[(gdap['G2cruise']==cruise) & (gdap['G2station']==stat),'DOXY_ADJUSTED'].values,
+                         gdap.loc[(gdap['G2cruise']==cruise) & (gdap['G2station']==stat),'PRES_ADJUSTED'].values,
+                        'm+-',linewidth=0.3)
+                axn.scatter(gdap_match.DOXY_ADJUSTED[gdap_offset_ind],
+                            gdap_match.PRES_ADJUSTED[gdap_offset_ind],s=50,c='b',marker='D')
+            plt.gca().invert_yaxis()
+            plt.ylim([2000,1200])
+            plt.ylabel('pressure')
+            plt.xlabel('DOXY_ADJUSTED')
+            plt.title(str(group.wmo[0].values))
+            
+            #PDENS
+            axn = plt.subplot(3,2,2)
+            #plot float profile and matchups
+            axn.scatter(group.PDENS[n,:],group.PRES_ADJUSTED[n,:],s=4,c='orangered',marker='o')
+            axn.scatter(group.PDENS[n,dens_inds],group.PRES_ADJUSTED[n,dens_inds],s=50,c='k',marker='s')
+            #plot glodap profiles and matchups- (split glodap into profiles by cruise and station?)
+            for m in range(len(match_inds)):
+                gdap_offset_ind = gdap_match[var].index[m]
+
+                cruise = gdap_match.G2cruise[gdap_offset_ind]
+                stat = gdap_match.G2station[gdap_offset_ind]
+                                #plot all glodap data that match these cruise and stations
+                axn.plot(gdap.loc[(gdap['G2cruise']==cruise) & (gdap['G2station']==stat),'PDENS'].values,
+                         gdap.loc[(gdap['G2cruise']==cruise) & (gdap['G2station']==stat),'PRES_ADJUSTED'].values,
+                        'm+-',linewidth=0.3)
+                axn.scatter(gdap_match.PDENS[gdap_offset_ind],
+                            gdap_match.PRES_ADJUSTED[gdap_offset_ind],s=50,c='b',marker='D')
+            plt.gca().invert_yaxis()
+            plt.ylim([2000,1200])
+            plt.xlim([27.5,28.0])
+            plt.ylabel('pressure')
+            plt.xlabel('PDENS')
+            
+            #DOXY vs PDENS
+            axn = plt.subplot(3,2,3)
+            #plot float profile and matchups
+            axn.scatter(group.DOXY_ADJUSTED[n,:],group.PDENS[n,:],s=4,c='orangered',marker='o')
+            axn.scatter(group.DOXY_ADJUSTED[n,dens_inds],group.PDENS[n,dens_inds],s=50,c='k',marker='s')
+            for m in range(len(match_inds)):
+                gdap_offset_ind = gdap_match[var].index[m]
+
+                cruise = gdap_match.G2cruise[gdap_offset_ind]
+                stat = gdap_match.G2station[gdap_offset_ind]
+                #plot all glodap data that match these cruise and stations
+                axn.plot(gdap.loc[(gdap['G2cruise']==cruise) & (gdap['G2station']==stat),'DOXY_ADJUSTED'].values,
+                         gdap.loc[(gdap['G2cruise']==cruise) & (gdap['G2station']==stat),'PDENS'].values,
+                        'm+-',linewidth=0.3)
+                axn.scatter(gdap_match.DOXY_ADJUSTED[gdap_offset_ind],
+                            gdap_match.PDENS[gdap_offset_ind],s=50,c='b',marker='D')
+            
+            plt.gca().invert_yaxis()
+            plt.ylabel('PDENS')
+            plt.xlabel('DOXY_ADJUSTED')
+            
+            #print cruise names and dates
+            axn = plt.subplot(3,2,4)
+            axn.text(0.05,0.95,'G2cruise G2station G2date',fontsize=12)
+            yn=0.9
+            for m in range(len(match_inds)):
+                off_ind = gdap_match['G2cruise'].index[m]
+                
+                if m == 0:
+                    axn.text(0.05,yn,str(gdap_match.G2cruise[off_ind])+' '+str(gdap_match.G2station[off_ind])+' '+str(gdap_match.datetime[off_ind]))
+                    yn=yn-0.05
+                elif gdap_match.G2cruise[off_ind] != cc:
+                    axn.text(0.05,yn,str(gdap_match.G2cruise[off_ind])+' '+str(gdap_match.G2station[off_ind])+' '+str(gdap_match.datetime[off_ind]))
+                    yn=yn-0.05    
+                cc = gdap_match.G2cruise[off_ind] #current cruise to compare with next 
+                 
+            #histogram of offsets
+            axn = plt.subplot(3,2,5)
+            o2_offsets[o2_offsets==np.inf] = np.nan
+            if not np.all(np.isnan(o2_offsets)):
+                axn.hist(o2_offsets[~np.isnan(o2_offsets)],np.linspace(-5,5,5),color='b')
+            
+            axn = plt.subplot(3,2,6)
+            dens_offsets[dens_offsets==np.inf] = np.nan
+            if not np.all(np.isnan(dens_offsets)):
+                axn.hist(dens_offsets[~np.isnan(dens_offsets)],np.linspace(-1,1,5),color='b')
 
 
 # +

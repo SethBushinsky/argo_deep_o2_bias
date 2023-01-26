@@ -1,20 +1,20 @@
-%% read in float profile names from JCOMMOPS and download data
-% 
+% % read in float profile names from JCOMMOPS and download data
+%
 % float_dir = [home_dir 'Data/ARGO_O2_Floats/Global/GLOBAL_BGC_ARGO/2020_11_16/'];
 % % float_dir = [home_dir 'Data/ARGO_O2_Floats/Global/GLOBAL_BGC_ARGO/2022_03_10/'];
-% 
+%
 % % working_dir = [home_dir 'Work/Proposals/2020_11 NOAA GOMO Float BGC Change Synthesis/Data/'];
-% 
+%
 % files = {'Ocean_Ops_O2_list2', 'Ocean_Ops_pH_list2', 'Ocean_Ops_NO3_list2'};
-% 
+%
 % % platform_list = 'Platforms_JCOMMOPS_KE_Region';
-% 
+%
 % opts = delimitedTextImportOptions("NumVariables", 11);
-% 
+%
 % % Specify range and delimiter
 % opts.DataLines = [2, Inf];
 % opts.Delimiter = ",";
-% 
+%
 % % Specify column names and types
 % opts.VariableNames = ["COUNTRY", "DEPLOYMENTDATE", "DEPLOYMENTLAT", "DEPLOYMENTLON", "LASTLOCATIONDATE", "MODEL", "OBSERVINGNETWORKS", "PROGRAM", "REF", "SERIALNUMBER", "STATUS"];
 % opts.VariableTypes = ["char", "char", "double", "double", "char", "char", "char", "char", "double", "double", "char"];
@@ -22,7 +22,7 @@
 % opts = setvaropts(opts, [1, 2, 5, 6, 7, 8, 11], "EmptyFieldRule", "auto");
 % opts.ExtraColumnsRule = "ignore";
 % opts.EmptyLineRule = "read";
-% 
+%
 % % Import the data
 % for f = 1:length(files)
 %     oceanops.(files{f}) = readtable([float_dir files{f} '.csv'], opts);
@@ -35,7 +35,6 @@
 % % Clear temporary variables
 % clear opts numIdx
 
-%%
 clear oceanops
 
 float_dir = [data_dir 'Data_Products/BGC_ARGO_GLOBAL/2022_08_25/'];
@@ -98,16 +97,17 @@ arindexglobalmeta(numIdx) = cellfun(@(x) {str2double(x)}, arindexglobalmeta(numI
 % Clear temporary variables
 clear opts numIdx
 
-%% generate a reference list of SNs from the metadata search
+% + magic_args="generate a reference list of SNs from the metadata search"
 clear all_argo_WMO
 all_argo_WMO = NaN(length(arindexglobalmeta),1);
+% -
 
 for m = 1:length(arindexglobalmeta)
     dir_breaks = strfind(arindexglobalmeta{m,1}, '/');
     
     all_argo_WMO(m,1) = str2double(arindexglobalmeta{m,1}(dir_breaks(1)+1:dir_breaks(2)-1));
     clear dir_breaks
-    
+
 end
 clear m
 %% download SProf files
@@ -142,7 +142,7 @@ for q = last:length(WMO_list)
     
     flag_out{q,2} = partial_dir;
     clear partial_dir dir_breaks float_index file_dir
-    
+
 end
 
 clear float_index q
@@ -154,7 +154,7 @@ for q = 1:length(flag_out)
     if isempty(flag_out{q,1}) || flag_out{q,1}~=0 
         failed_floats{end+1,1} = flag_out{q,2};
     end
-    
+
 end
 %% reading in and plotting data
 clear Argo
@@ -184,7 +184,7 @@ clear float_files f
 
 SNs = fieldnames(Argo);
 
-%% Derived quantities / adjustments to dataset %% calculate Matlab time
+% % Derived quantities / adjustments to dataset %% calculate Matlab time
 
 for f = 1:length(SNs)
     Argo.(SNs{f}).GMT_Matlab = Argo.(SNs{f}).JULD+ datenum(Argo.(SNs{f}).REFERENCE_DATE_TIME', 'YYYYmmddHHMMSS');
@@ -213,12 +213,13 @@ for f = 1:length(SNs)
     end
 end
 
-%% save dataset
+% + magic_args="save dataset"
 save([float_dir 'Argo_BGC_' datestr(now, 'YYYY-mm-dd')], 'Argo', 'SNs', 'float_dir',  '-V7.3')
 
-%% Calculate a surface / 25 m avg.
+% + magic_args="Calculate a surface / 25 m avg."
 pres_lim = 25;
 temp_list = {'TEMP_ADJUSTED', 'PSAL_ADJUSTED', 'DOXY_ADJUSTED', 'NITRATE_ADJUSTED', 'PH_IN_SITU_TOTAL_ADJUSTED'};
+% -
 
 for f = 1:length(SNs)
     for t = 1:length(temp_list)
