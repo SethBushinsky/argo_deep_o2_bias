@@ -6,9 +6,9 @@
 #       extension: .py
 #       format_name: light
 #       format_version: '1.5'
-#       jupytext_version: 1.11.3
+#       jupytext_version: 1.14.0
 #   kernelspec:
-#     display_name: Python 3
+#     display_name: Python 3 (ipykernel)
 #     language: python
 #     name: python3
 # ---
@@ -195,7 +195,7 @@ gdap = gdap.rename(columns={'G2longitude':'LONGITUDE', 'G2latitude':'LATITUDE', 
 # ## 2. Apply float bias corrections 
 
 # +
-append_data = 1 #reads in and adds to argo_interp_temp.nc rather than overwriting and running all floats
+append_data = 0 #reads in and adds to argo_interp_temp.nc rather than overwriting and running all floats
 argolist = []
 for file in os.listdir(argo_path):
     if file.endswith('Sprof.nc'):
@@ -544,7 +544,7 @@ for n in range(len(argolist_run)):
     argo_n_derived.to_netcdf(argo_path_derived+str(wmo_n)+'_derived.nc')
     
     #Also save interpolated dataset as one mega Dataset for doing crossovers
-    if n == 0:
+    if n == 0 or 'argo_interp' not in locals(): # modified to deal w/ situation where n==0 skipped defining argo_interp
         argo_interp = argo_interp_n
     else:
         argo_interp = xr.concat([argo_interp,argo_interp_n],'N_PROF')
@@ -552,7 +552,6 @@ for n in range(len(argolist_run)):
     #save out argo_interp periodically:
     if n/20==round(n/20):
         argo_interp.to_netcdf(data_dir+'argo_interp_temp.nc')
-
 # -
 
 # ## 3. Compare float - GLODAP crossovers
