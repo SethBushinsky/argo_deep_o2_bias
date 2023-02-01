@@ -6,9 +6,9 @@
 #       extension: .py
 #       format_name: light
 #       format_version: '1.5'
-#       jupytext_version: 1.11.3
+#       jupytext_version: 1.14.0
 #   kernelspec:
-#     display_name: Python 3
+#     display_name: Python 3 (ipykernel)
 #     language: python
 #     name: python3
 # ---
@@ -175,7 +175,7 @@ for n,g in offsets_g:
     plt.colorbar(cn,cax=cx,label='DOXY OFFSET')
 
     
-    plt.savefig(offset_dir+str(g.main_float_wmo.values[0])+'_v_glodap.png')
+    plt.savefig(offset_dir+ 'individual_floats/' + str(g.main_float_wmo.values[0])+'_v_glodap.png')
     plt.clf()
   
 # -
