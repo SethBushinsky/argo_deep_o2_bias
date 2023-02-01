@@ -60,6 +60,11 @@ if not os.path.isdir('output'):
 if not os.path.isdir('data'):
     os.mkdir('data')
 
+# Check for a glodap_offsets_plots directory, create if it does not exist
+offset_dir = output_dir + 'glodap_offset_plots/'
+if not os.path.isdir(offset_dir):
+    os.mkdir(offset_dir)
+
 # +
 # read in a user-created text file to point to local directories to avoid having to change this every time 
 # we update code
@@ -232,6 +237,8 @@ if append_data==1 and os.path.exists(data_dir+'argo_interp_temp.nc'):
     argolist_run = [argolist[i] for i in indices]
 else:
     argolist_run=argolist
+    if 'argo_interp' in locals():
+        del argo_interp # deletes argo_interp in case this code is being run multiple times. 
           
 
 #####
@@ -552,6 +559,9 @@ for n in range(len(argolist_run)):
     #save out argo_interp periodically:
     if n/20==round(n/20):
         argo_interp.to_netcdf(data_dir+'argo_interp_temp.nc')
+
+argo_interp.to_netcdf(data_dir+'argo_interp_temp.nc') # need to save one final time so that final floats are not missed
+
 # -
 
 # ## 3. Compare float - GLODAP crossovers
@@ -559,7 +569,7 @@ for n in range(len(argolist_run)):
 # +
 #toggle to plot offsets profile by profile
 plot_profile = 1
-
+    
 #restrict glodap data to comparison pressure range
 gdap_p = gdap[(gdap.PRES_ADJUSTED.values>p_compare_min) & (gdap.PRES_ADJUSTED.values<p_compare_max)]
 
@@ -575,7 +585,9 @@ gdap_offsets =  [[] for _ in range(3*len(var_list_plot)+num_meta_items)]
 
 #iterate over each float & profile
 float_count = 0
+
 for wmo, group in argo_wmo:
+        
     #number of profiles
     nprof = group.LATITUDE.shape[0]
     
@@ -727,6 +739,13 @@ for wmo, group in argo_wmo:
             if np.all(np.isnan(group.PDENS.values[n,:])) or np.isnan(gdap_match.PDENS.values[m]):
                 continue
                 
+            # create a folder for profile plots if one does not exist:
+            if not os.path.isdir(offset_dir + 'individual_floats'):
+                os.mkdir(offset_dir + 'individual_floats')
+                
+            if not os.path.isdir(offset_dir + 'individual_floats/' + str(wmo)):
+                os.mkdir(offset_dir + 'individual_floats/' + str(wmo))
+    
             print('Plotting float '+str(group.wmo[0].values) + ' profile' + str(group.profile[n].values))
             fig = plt.figure(figsize=(8,16))
             
@@ -820,11 +839,16 @@ for wmo, group in argo_wmo:
             o2_offsets[o2_offsets==np.inf] = np.nan
             if not np.all(np.isnan(o2_offsets)):
                 axn.hist(o2_offsets[~np.isnan(o2_offsets)],np.linspace(-5,5,5),color='b')
-            
+                plt.xlabel('DOXY_OFFSETS')
+                
             axn = plt.subplot(3,2,6)
             dens_offsets[dens_offsets==np.inf] = np.nan
             if not np.all(np.isnan(dens_offsets)):
                 axn.hist(dens_offsets[~np.isnan(dens_offsets)],np.linspace(-1,1,5),color='b')
+                plt.xlabel('DENS_OFFSETS')
+
+            plt.savefig(offset_dir+ 'individual_floats/' + str(wmo) + '/' + str(group.wmo[0].values) + ' profile' + str(int(group.profile[n].values)))
+            plt.clf()
 
 
 # +
