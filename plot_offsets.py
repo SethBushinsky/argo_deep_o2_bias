@@ -420,7 +420,7 @@ for n,w in enumerate(glodap_offsets_mean.main_float_wmo):
     
     print(str(n) + ' out of ' + str(num_crossovers))
 #save offsets with cal info
-glodap_offsets.to_netcdf(output_dir+'glodap_offsets_floatmean_withcalibration.nc')
+glodap_offsets_mean.to_netcdf(output_dir+'glodap_offsets_floatmean_withcalibration.nc')
     
 # -
 
