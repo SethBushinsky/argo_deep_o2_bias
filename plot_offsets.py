@@ -6,9 +6,9 @@
 #       extension: .py
 #       format_name: light
 #       format_version: '1.5'
-#       jupytext_version: 1.11.3
+#       jupytext_version: 1.14.0
 #   kernelspec:
-#     display_name: Python 3
+#     display_name: Python 3 (ipykernel)
 #     language: python
 #     name: python3
 # ---
@@ -68,6 +68,8 @@ glodap_offsets = xr.load_dataset(output_dir+'glodap_offsets.nc')
 
 #group by main float wmo
 offsets_g = glodap_offsets.groupby(glodap_offsets.main_float_wmo)
+
+offsets_g
 
 # +
 #loop through each float
@@ -428,7 +430,7 @@ glodap_offsets.to_netcdf(output_dir+'glodap_offsets_floatmean_withcalibration.nc
 #
 # First define parameters a) and b) to group offsets
 
-parameter_a = 'pH_group'
+parameter_a = 'o2_calib_comment'
 parameter_b = 'o2_calib_air_group'
 #can pandas group by three different things?
 
@@ -441,23 +443,30 @@ offsets_g = glodap_offsets_p.groupby([parameter_a,parameter_b])
 
 # Plot pdfs for each group
 
+glodap_offsets_mean
+
+n
+
 # +
 #loop through groups and plot histograms and mean/median values of offsets
 plt.figure(figsize=(16,10))
 for n,group in offsets_g:
-    if n[1] == 'no cal/bad':
-        continue
+    #if n[1] == 'no cal/bad':
+    #    continue
     print(n)
     
     #calc mean values
     nmean = np.around(group['DOXY_ADJUSTED_offset'].mean(), decimals=2)
     nmedian = np.around(group['DOXY_ADJUSTED_offset'].median(), decimals=2)
+    ncount = group['DOXY_ADJUSTED_offset'].count()
     print(nmean)
     print(nmedian)
-    
+    print(ncount)
+
     #plot histogram
     plt.hist(group['DOXY_ADJUSTED_offset'], bins=np.linspace(-60, 60, 121),
-             alpha=0.3,label=str(n)+', med='+str(nmedian))
+             alpha=0.3,label=str(n)+', mean='+str(nmean) + ', n='+str(ncount))
+
 
 
 plt.xlabel('DOXY Offset')
