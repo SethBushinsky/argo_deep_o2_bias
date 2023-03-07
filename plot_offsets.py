@@ -240,11 +240,16 @@ coord= range(glodap_offsets_mean.main_float_wmo.shape[0])
 for v in varnames:
     glodap_offsets_mean[v] = xr.DataArray(dims=['main_float_wmo'],coords={'main_float_wmo':coord}).astype(str)
 
-#also create groups by sensor (pH)
+#also create groups by sensor 
 glodap_offsets_mean['pH_group'] = xr.DataArray(dims=['main_float_wmo'],coords={'main_float_wmo':coord}).astype(str)
+glodap_offsets_mean['pH_sensor'] = xr.DataArray(dims=['main_float_wmo'],coords={'main_float_wmo':coord}).astype(str)
 glodap_offsets_mean['nitrate_group'] = xr.DataArray(dims=['main_float_wmo'],coords={'main_float_wmo':coord}).astype(str)
+glodap_offsets_mean['nitrate_sensor'] = xr.DataArray(dims=['main_float_wmo'],coords={'main_float_wmo':coord}).astype(str)
 glodap_offsets_mean['DOXY_group'] = xr.DataArray(dims=['main_float_wmo'],coords={'main_float_wmo':coord}).astype(str)
+glodap_offsets_mean['DOXY_sensor'] = xr.DataArray(dims=['main_float_wmo'],coords={'main_float_wmo':coord}).astype(str)
 
+#group for floats that have some under ice profiles with some air calibrated some not
+glodap_offsets_mean['ice_group'] = xr.DataArray(dims=['main_float_wmo'],coords={'main_float_wmo':coord}).astype(str)
 
 num_crossovers = glodap_offsets_mean.main_float_wmo.size
 
@@ -256,6 +261,9 @@ for n,w in enumerate(glodap_offsets_mean.main_float_wmo):
     fn = argo_path + str(wmo_n) + '_Sprof.nc'
     float_og = xr.open_dataset(fn)
     
+    #also load meta file  for same float
+    fn1 = argo_path + str(wmo_n) + '_meta.nc'
+    meta_og = xr.open_dataset(fn1)
 
     #option for multiple calibrations at different times- default to use most recent only for now?
     #O2 calibration
@@ -265,10 +273,25 @@ for n,w in enumerate(glodap_offsets_mean.main_float_wmo):
     no_cal = []
     if 'DOXY_ADJUSTED' in float_og.keys():
         is_doxy = 'DOXY'
+        
+        #get O2 sensor type
+        #check sensor index
+        sensors = meta_og.SENSOR.values
+        sind = [idx for idx, s in enumerate(sensors) if 'DOXY' in s.decode("utf-8")] 
+        #grab sensor model for index
+        if len(sind):
+            o2_sensor = meta_og.SENSOR_MODEL.values[sind[0]].decode("utf-8")
+        else:
+            o2_sensor = 'not listed'
+
         cal_str = float_og.STATION_PARAMETERS.values.astype(str)[0]
         o2_ind = [idx for idx, s in enumerate(cal_str) if 'DOXY' in s]
         if len(o2_ind):
+ 
+            
+            #get calibration info
             o2_cal_full = float_og.SCIENTIFIC_CALIB_COMMENT.values[:,-1,o2_ind[0]]
+            o2_cal_date = float_og.SCIENTIFIC_CALIB_DATE.values[:,-1,o2_ind[0]]
             o2_cal_unique = np.unique(o2_cal_full)
             
             #check if any unique cal comments are bad/no cal
@@ -284,15 +307,21 @@ for n,w in enumerate(glodap_offsets_mean.main_float_wmo):
 
             #check if more than one unique calibration comment remaining after excluding bad data
             if len(o2_cal_unique)>1:
-                print('multiple cal comments')   
-                print(o2_cal_unique)
+                print('multiple cal comments')  
+                print(wmo_n)
                 #how to integrate multiple comments? Do any contain different groupings?
                 o2_cal = float_og.SCIENTIFIC_CALIB_COMMENT.values[0,-1,o2_ind[0]].decode("utf-8")
+                if np.any(float_og.POSITION_QC.values==8):
+                    under_ice = 'some air cal, some under ice'
+                    print('under ice')
+                else:
+                    under_ice = 'no ice'
                     
             else:
                 o2_cal = float_og.SCIENTIFIC_CALIB_COMMENT.values[0,-1,o2_ind[0]].decode("utf-8")
             o2_eq = float_og.SCIENTIFIC_CALIB_EQUATION.values[0,-1,o2_ind[0]].decode("utf-8")
             o2_co = float_og.SCIENTIFIC_CALIB_COEFFICIENT.values[0,-1,o2_ind[0]].decode("utf-8")
+            under_ice = 'no ice'
         else:
             o2_cal = 'empty O2 calib comment'
             o2_eq = 'none'
@@ -303,6 +332,7 @@ for n,w in enumerate(glodap_offsets_mean.main_float_wmo):
         o2_cal = 'no O2'
         o2_eq = 'none'
         o2_co = 'none'
+        o2_sensor = 'none'
     
 
     ######## group calibration comments into categories
@@ -342,14 +372,33 @@ for n,w in enumerate(glodap_offsets_mean.main_float_wmo):
     
     if 'PH_IN_SITU_TOTAL_ADJUSTED' in float_og.keys():
         is_pH = 'pH'
+        #get pH sensor type
+        #check sensor index
+        sensors = meta_og.SENSOR.values
+        sind = [idx for idx, s in enumerate(sensors) if 'PH' in s.decode("utf-8")] 
+        #grab sensor model for index
+        pH_sensor = meta_og.SENSOR_MODEL.values[sind[0]].decode("utf-8")
     else:
         is_pH = 'no pH'
+        pH_sensor = 'none'
     
     if 'NITRATE_ADJUSTED' in float_og.keys():
         is_nitrate = 'nitrate'
+        #get nitrate sensor type
+        #check sensor index
+        sensors = meta_og.SENSOR.values
+        sind = [idx for idx, s in enumerate(sensors) if 'NITRATE' in s.decode("utf-8")] 
+        #grab sensor model for index
+        nitrate_sensor = meta_og.SENSOR_MODEL.values[sind[0]].decode("utf-8")
     else:
         is_nitrate = 'no nitrate'
-        
+        nitrate_sensor = 'none'
+    
+
+    ###### get sensor information from meta files
+
+    
+    
     ##################################################
     #add metadata to glodap_offset Dataset
     glodap_offsets_mean.o2_calib_comment[n] = o2_cal
@@ -362,10 +411,14 @@ for n,w in enumerate(glodap_offsets_mean.main_float_wmo):
     glodap_offsets_mean.plat_type[n] = float_og.PLATFORM_TYPE.values.astype(str)[0]
     glodap_offsets_mean.data_centre[n] = float_og.DATA_CENTRE.values.astype(str)[0]
     glodap_offsets_mean.DOXY_group[n] = is_doxy
+    glodap_offsets_mean.DOXY_sensor[n] = o2_sensor
     glodap_offsets_mean.pH_group[n] = is_pH
+    glodap_offsets_mean.pH_sensor[n] = pH_sensor
     glodap_offsets_mean.nitrate_group[n] = is_nitrate
+    glodap_offsets_mean.nitrate_sensor[n] = nitrate_sensor
+    glodap_offsets_mean.ice_group[n] = under_ice
     
-    #print(str(n) + ' out of ' + str(num_crossovers))
+    print(str(n) + ' out of ' + str(num_crossovers))
 #save offsets with cal info
 glodap_offsets.to_netcdf(output_dir+'glodap_offsets_floatmean_withcalibration.nc')
     
@@ -413,6 +466,7 @@ for n,group in offsets_g:
     #plot histogram
     plt.hist(group['DOXY_ADJUSTED_offset'], bins=np.linspace(-60, 60, 121),
              alpha=0.3,label=str(n)+', mean='+str(nmean) + ', n='+str(ncount))
+
 
 
 plt.xlabel('DOXY Offset')
