@@ -135,9 +135,10 @@ for q = last:length(WMO_list)
     
     partial_dir = arindexglobalmeta{float_index,1}(1:dir_breaks(2));
     
-    file_dir = ['ftp://ftp.ifremer.fr/ifremer/argo/dac/' partial_dir num2str(WMO_list(q,1)) '_Sprof.nc'];
-    
-    flag_out{q,1} = system(['wget -P ' float_dir ' ' file_dir]);
+%     file_dir = ['ftp://ftp.ifremer.fr/ifremer/argo/dac/' partial_dir num2str(WMO_list(q,1)) '_Sprof.nc'];
+        file_dir = ['ftp://ftp.ifremer.fr/ifremer/argo/dac/' partial_dir num2str(WMO_list(q,1)) '_meta.nc'];
+
+    flag_out{q,1} = system(['/Users/smb-uh/opt/anaconda3/bin/wget -P ' float_dir 'Sprof/' ' ' file_dir]);
     last = last+1;
     
     flag_out{q,2} = partial_dir;
