@@ -6,9 +6,9 @@
 #       extension: .py
 #       format_name: light
 #       format_version: '1.5'
-#       jupytext_version: 1.13.8
+#       jupytext_version: 1.14.0
 #   kernelspec:
-#     display_name: Python 3
+#     display_name: Python 3 (ipykernel)
 #     language: python
 #     name: python3
 # ---
@@ -236,13 +236,82 @@ plt.savefig(output_dir_figs+ 'Fig_1v2_Argo_O2_Sampling_Density.png')
 # Figure 3. Histograms showing any bias in bgc parameters from crossovers with glodap
 #
 
-glodap_offsets = xr.load_dataset(output_dir+'glodap_offsets.nc')
+glodap_offsets_mean = xr.load_dataset(output_dir+'glodap_offsets_floatmean_withcalibration.nc')
+
+glodap_offsets_p = glodap_offsets_mean.to_dataframe()
+
+parameter_a = 'o2_calib_air_group'
+parameter_b = 'pH_group'
+offsets_g = glodap_offsets_p.groupby(parameter_a)
+
+offsets_pH = glodap_offsets_p.groupby([parameter_a, parameter_b])
+
+n[0]
 
 # +
-plt.figure(figsize=(20,12))
-plt.hist(glodap_offsets.DOXY_ADJUSTED_offset)
-plt.xlabel('DOXY Offset')
-plt.savefig(output_dir_figs + 'Glodap_offsets_doxy_no_filt.png')
+
+plt.figure(figsize=(10,8))
+plt.subplot(2,2,1)
+nmean = np.around(glodap_offsets_mean['DOXY_ADJUSTED_offset'].mean(), decimals=2)
+nmedian = np.around(glodap_offsets_mean['DOXY_ADJUSTED_offset'].median(), decimals=2)
+ncount = glodap_offsets_mean['DOXY_ADJUSTED_offset'].count()
+    
+plt.hist(glodap_offsets_mean['DOXY_ADJUSTED_offset'], 
+         bins=np.linspace(-170, 170, 61),label='mean='+str(nmean.values) + ' median='+str(nmedian.values) + 
+         ', n='+str(ncount.values)) # ,label=str(n)
+#print(np.around(glodap_offsets_mean['DOXY_ADJUSTED_offset'].median().values, decimals=2))
+plt.grid()
+plt.title('All float crossovers')
+plt.xlabel(r'DOXY Offset ( $\mu$mol kg$^{-1}$)')
+plt.legend()
+
+plt.subplot(2,2,3)
+plt.title('All floats, $\pm$ 20 $\mu$mol kg$^{-1}$ range')
+plt.hist(glodap_offsets_mean['DOXY_ADJUSTED_offset'], 
+         bins=np.linspace(-20, 20, 61),label='median='+str(nmedian.values) + 
+         ', n='+str(ncount.values)) # ,label=str(n)
+plt.grid()
+plt.xlabel(r'DOXY Offset ( $\mu$mol kg$^{-1}$)')
+
+plt.subplot(2,2,2)
+
+for n, group in offsets_g:
+    print(n)
+    nmean = np.around(group['DOXY_ADJUSTED_offset'].mean(), decimals=2)
+    nmedian = np.around(group['DOXY_ADJUSTED_offset'].median(), decimals=2)
+    ncount = group['DOXY_ADJUSTED_offset'].count()
+
+    plt.hist(group['DOXY_ADJUSTED_offset'], bins=np.linspace(-20, 20, 61),
+             alpha=0.3,label=str(n)+' \nmed.='+str(nmedian) + 
+         ', n='+str(ncount))
+    plt.grid()
+    plt.title('Grouped by air calibration')
+
+    plt.xlabel(r'DOXY Offset ( $\mu$mol kg$^{-1}$)')
+    plt.legend()
+
+plt.subplot(2,2,4)
+
+for n, group in offsets_pH:
+    if n[1] == 'no pH' or n[0] == 'no cal/bad':
+        continue
+    print(n)
+    nmean = np.around(group['DOXY_ADJUSTED_offset'].mean(), decimals=2)
+    nmedian = np.around(group['DOXY_ADJUSTED_offset'].median(), decimals=2)
+    ncount = group['DOXY_ADJUSTED_offset'].count()
+
+    plt.hist(group['DOXY_ADJUSTED_offset'], bins=np.linspace(-20, 20, 61),
+             alpha=0.3,label=str(n)+' \nmed.='+str(nmedian) + 
+         ', n='+str(ncount))
+    plt.title('pH floats only')
+    plt.grid()
+
+    plt.xlabel(r'DOXY Offset ( $\mu$mol kg$^{-1}$)')
+    plt.legend()
+    
+plt.tight_layout()
+
+plt.savefig(output_dir_figs + 'Glodap_offsets_doxy_all.png')
 
 # apparently need to filter out and understand some very large outliers
 

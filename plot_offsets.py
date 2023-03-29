@@ -430,7 +430,10 @@ glodap_offsets_mean.to_netcdf(output_dir+'glodap_offsets_floatmean_withcalibrati
 #
 # First define parameters a) and b) to group offsets
 
-parameter_a = 'o2_calib_comment'
+glodap_offsets_mean
+
+
+parameter_a = 'pH_group'
 parameter_b = 'o2_calib_air_group'
 #can pandas group by three different things?
 
@@ -471,7 +474,7 @@ for n,group in offsets_g:
 
 plt.xlabel('DOXY Offset')
 plt.legend()
-plt.savefig(offset_dir + 'Glodap_offsets_doxy_all_'+parameter_a+parameter_b+'.png')
+plt.savefig(offset_dir + 'Glodap_offsets_doxy_all_'+parameter_a+parameter_b+'_v2.png')
 # -
 
 # ### 4. Example: map offsets for single float sub-group
@@ -495,7 +498,7 @@ for n, group in offsets_g1:
         ax.set_global()
         sct = plt.scatter(group.main_float_longitude, 
                 group.main_float_latitude, 
-                c=group.DOXY_ADJUSTED_offset,cmap='RdBu_r',s=40,vmin=-6,vmax=6)
+                c=group.DOXY_ADJUSTED_offset,cmap='RdBu_r',s=40,vmin=-10,vmax=10)
         cbar = plt.colorbar(sct, fraction=.08, pad = 0.04, shrink=0.5)
         cbar.set_label('O2 offset', labelpad=15, fontsize=14)
         #plt.scatter(glodap_offsets.glodap_longitude,glodap_offsets.glodap_longitude,s=4)
