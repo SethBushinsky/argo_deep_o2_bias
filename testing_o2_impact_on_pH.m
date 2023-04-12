@@ -76,6 +76,20 @@ for i = 1:model_time-1
     Revelle(i) = pCO2_change_1_umol_DIC - pCO2(i);
     pH_Revelle(i) = pH_change_1_umol_DIC - pH(i);
 end
+%%
+
+[DATA,~,~]= CO2SYSSOCCOM_smb(TA(i), DIC(i) , ...
+        1,2,SAL, Theta, ...
+        Theta ,...
+        Press_in,Press_in,SI, PO4,1,10,3);
+DATA_orig = DATA;
+
+[DATA,~,~]= CO2SYSSOCCOM_smb(TA(i)-.15, DIC(i)+1 , ...
+        1,2,SAL, Theta, ...
+        Theta ,...
+        Press_in,Press_in,SI, PO4,1,10,3);
+
+DATA - DATA_orig
 
 %%
 
