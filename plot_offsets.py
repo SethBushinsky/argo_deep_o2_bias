@@ -474,7 +474,7 @@ for n,group in offsets_g:
 
 plt.xlabel('DOXY Offset')
 plt.legend()
-plt.savefig(offset_dir + 'Glodap_offsets_doxy_all_'+parameter_a+parameter_b+'_v2.png')
+plt.savefig(offset_dir + 'Glodap_offsets_doxy_all_'+parameter_a+parameter_b+'_v3.png')
 # -
 
 # ### 4. Example: map offsets for single float sub-group
@@ -502,7 +502,7 @@ for n, group in offsets_g1:
         cbar = plt.colorbar(sct, fraction=.08, pad = 0.04, shrink=0.5)
         cbar.set_label('O2 offset', labelpad=15, fontsize=14)
         #plt.scatter(glodap_offsets.glodap_longitude,glodap_offsets.glodap_longitude,s=4)
-        plt.savefig(offset_dir+ 'map_o2_offsets_air_only.png')
+        plt.savefig(offset_dir+ 'map_o2_offsets_air_only_v3.png')
         plt.show()
 
 # ### 5. Example: histogram of all global DOXY offsets, mean of each float
