@@ -1,19 +1,44 @@
 % investigating o2 impact on pH:
 
 o2_offset = -20:10:20;
-o2_mag = 50:50:300;
-
+o2_mag = 300; %50:50:300;
+no3_offset = -0.25:.25:0.25;
+no3_mag = 5;
 pH_out = NaN(length(o2_offset), length(o2_mag));
+MeasIDVec = [1, 7, 3, 6];
+
 for m=1:length(o2_mag)
     for o = 1:length(o2_offset)
         Coordinates_all = [-149.968     ,  -52.543     , 1500.        ];
-        Measurements_all = [34.50930023,   2.80669999,         o2_mag(m) - o2_offset(o)];
-        Measurements_offset = [ 34.50930023,   2.80669999,           172.22309662];
-        MeasIDVec = [1, 7,  6];
+        Measurements_all = [34.50930023,   2.80669999,      no3_mag,   o2_mag(m) - o2_offset(o)];
+%         Measurements_offset = [ 34.50930023,   2.80669999,           172.22309662];
 
         pH_out(o,m) = LIPHR(Coordinates_all, Measurements_all, MeasIDVec, 'OAAdjustTF', 0, 'verboseTF', 0);
     end
 end
+
+%% NO3 and Oxygen on pH at one point
+MeasIDVec = [1, 7, 3, 6];
+
+Coordinates_all = [-149.968     ,  -52.543     , 1500.        ];
+Measurements_all = [34.50930023,   2.80669999,      4,   300];
+orig_pH = LIPHR(Coordinates_all, Measurements_all, MeasIDVec, 'OAAdjustTF', 0, 'verboseTF', 0);
+
+Measurements_all = [34.50930023,   2.80669999,      4,   300-5];
+
+pH_O2 = LIPHR(Coordinates_all, Measurements_all, MeasIDVec, 'OAAdjustTF', 0, 'verboseTF', 0);
+pH_O2 - orig_pH
+
+Measurements_all = [34.50930023,   2.80669999,      4+5*16/154,   300];
+
+pH_no3 = LIPHR(Coordinates_all, Measurements_all, MeasIDVec, 'OAAdjustTF', 0, 'verboseTF', 0);
+pH_no3 - orig_pH
+
+Measurements_all = [34.50930023,   2.80669999,      4+5*16/154,   300-5];
+
+pH_O2_no3 = LIPHR(Coordinates_all, Measurements_all, MeasIDVec, 'OAAdjustTF', 0, 'verboseTF', 0);
+pH_O2_no3 - orig_pH
+
 %% 
 
 clf
