@@ -6,9 +6,9 @@
 #       extension: .py
 #       format_name: light
 #       format_version: '1.5'
-#       jupytext_version: 1.11.3
+#       jupytext_version: 1.14.0
 #   kernelspec:
-#     display_name: Python 3
+#     display_name: Python 3 (ipykernel)
 #     language: python
 #     name: python3
 # ---
@@ -122,7 +122,7 @@ var_list_plot = ['PRES_ADJUSTED','TEMP_ADJUSTED','PSAL_ADJUSTED','DOXY_ADJUSTED'
 # ## 1. Download and process GLODAP data
 
 # +
-gdap = fl.get_glodap(data_dir, year = 2021)
+gdap = fl.get_glodap(data_dir, year = 2022)
 gdap.G2longitude[gdap.G2longitude < 0.] = gdap.G2longitude[gdap.G2longitude < 0.] + 360.
 #set flagged data to NaN (is this needed? or masked array better?)
 flagvars = ['G2salinity','G2oxygen','G2nitrate','G2tco2','G2talk','G2phts25p0']
@@ -144,19 +144,20 @@ gdap['spice'] = carbon_utils.spiciness0(gdap.G2salinity.values,gdap.G2temperatur
                                   gdap.G2longitude.values,gdap.G2latitude.values,gdap.G2pressure.values)
 
 # +
+# 2023_04_10 Commenting out, will fully remove later if nothing is broken
 ###IS THIS NEEDED? CAN REMOVE?
 #iterate over grouped data to calc MLD
 #need to group by cruise and station first
-gdap_s = gdap.groupby(['G2cruise','G2station','G2cast'])
-for n, group in gdap_s:
-    #need to only do if not all -9999!!!
-    zmin = np.absolute(group.G2depth-10.).argmin()
-    zminind = group.G2depth.index[zmin]
-    mld_sigma = group.G2sigma0[zminind]+0.03 #density threshold value
+#gdap_s = gdap.groupby(['G2cruise','G2station','G2cast'])
+#for n, group in gdap_s:
+#    #need to only do if not all -9999!!!
+#    zmin = np.absolute(group.G2depth-10.).argmin()
+#    zminind = group.G2depth.index[zmin]
+#    mld_sigma = group.G2sigma0[zminind]+0.03 #density threshold value
     #look only below 10m
-    mldind = group[zmin:].index[group.G2sigma0[zmin:]>=mld_sigma] #identify MLD 
-    if len(mldind):
-        group['MLD_sigma0'] = group.G2depth[mldind[0]]
+#    mldind = group[zmin:].index[group.G2sigma0[zmin:]>=mld_sigma] #identify MLD 
+#    if len(mldind):
+#        group['MLD_sigma0'] = group.G2depth[mldind[0]]
         
 #put groups back to original dataframe. pd.join?
 
@@ -209,18 +210,17 @@ argolist.sort()
 LIAR_path = liar_dir
 
 #float QC data fields
-qc_data_fields = ['TEMP_ADJUSTED', 'PSAL_ADJUSTED', 'DOXY_ADJUSTED', 'NITRATE_ADJUSTED',  'PRES_ADJUSTED']
+qc_data_fields = ['TEMP_ADJUSTED', 'PSAL_ADJUSTED', 'DOXY_ADJUSTED', 'NITRATE_ADJUSTED', 
+                  'PRES_ADJUSTED', 'PH_IN_SITU_TOTAL_ADJUSTED']
 
 bgc_data_fields = ['DOXY_ADJUSTED', 'NITRATE_ADJUSTED', 'PH_IN_SITU_TOTAL_ADJUSTED']
 
 #variables to save to derived file
 derived_list = ['TEMP_ADJUSTED', 'PSAL_ADJUSTED', 'DOXY_ADJUSTED', 'NITRATE_ADJUSTED', 'PH_IN_SITU_TOTAL_ADJUSTED',
-            'pH_25C_TOTAL_ADJUSTED', 'pH_25C_corr', 'PDENS', 'spice', 'PRES_ADJUSTED', 'DIC','TALK_LIAR',
-            'pCO2','pCO2_pH_corr']
+            'pH_25C_TOTAL_ADJUSTED', 'PDENS', 'spice', 'PRES_ADJUSTED', 'DIC','TALK_LIAR']
 #variables to do crossover calculation
 var_list = ['TEMP_ADJUSTED', 'PSAL_ADJUSTED', 'DOXY_ADJUSTED', 'NITRATE_ADJUSTED', 'PH_IN_SITU_TOTAL_ADJUSTED',
-            'pH_25C_TOTAL_ADJUSTED', 'pH_25C_corr', 'PDENS', 'spice', 'PRES_ADJUSTED', 'DIC','TALK_LIAR',
-            'pCO2','pCO2_pH_corr']
+            'pH_25C_TOTAL_ADJUSTED', 'PDENS', 'spice', 'PRES_ADJUSTED', 'DIC','TALK_LIAR']
 
 #if append data is set to 1, reads in argo_interp_temp.nc which contains prior argo_interp array, 
 #compare wmo numbers between argolist and the wmo numbers in argo_interp, and continues on processing 
@@ -323,12 +323,12 @@ for n in range(len(argolist_run)):
         argo_n.pH_25C_TOTAL_ADJUSTED[:] = np.nan
         argo_n['DIC'] = (['N_PROF','N_LEVELS'],np.empty(argo_n.PRES_ADJUSTED.shape)) #nprof x nlevel
         argo_n.DIC[:] = np.nan
-        argo_n['pH_insitu_corr'] = (['N_PROF','N_LEVELS'],np.empty(argo_n.PRES_ADJUSTED.shape)) #nprof x nlevel
-        argo_n.pH_insitu_corr[:] = np.nan
-        argo_n['pH_25C_corr'] = (['N_PROF','N_LEVELS'],np.empty(argo_n.PRES_ADJUSTED.shape)) #nprof x nlevel
-        argo_n.pH_25C_corr[:] = np.nan
-        argo_n['bias_corr'] = (['N_PROF','N_LEVELS'],np.empty(argo_n.PRES_ADJUSTED.shape)) #nprof
-        argo_n.bias_corr[:] = np.nan
+#         argo_n['pH_insitu_corr'] = (['N_PROF','N_LEVELS'],np.empty(argo_n.PRES_ADJUSTED.shape)) #nprof x nlevel
+#         argo_n.pH_insitu_corr[:] = np.nan
+#         argo_n['pH_25C_corr'] = (['N_PROF','N_LEVELS'],np.empty(argo_n.PRES_ADJUSTED.shape)) #nprof x nlevel
+#         argo_n.pH_25C_corr[:] = np.nan
+#         argo_n['bias_corr'] = (['N_PROF','N_LEVELS'],np.empty(argo_n.PRES_ADJUSTED.shape)) #nprof
+#         argo_n.bias_corr[:] = np.nan
 
     
         ##### Calc float TALK       
@@ -403,56 +403,56 @@ for n in range(len(argolist_run)):
         argo_n['DIC'] = (['N_PROF','N_LEVELS'],results['dic'])  
 
         
-        for p in range(nprof_n):
+#         for p in range(nprof_n):
             
-            # skip a profile if pH is above 10.  There seem to be pH's above 10 that causing 
-            if any(argo_n.PH_IN_SITU_TOTAL_ADJUSTED[p,:]>10) or all(np.isnan(argo_n.PH_IN_SITU_TOTAL_ADJUSTED[p,:])):
-                'print pH out of range'
-                continue
+#             # skip a profile if pH is above 10.  There seem to be pH's above 10 that causing 
+#             if any(argo_n.PH_IN_SITU_TOTAL_ADJUSTED[p,:]>10) or all(np.isnan(argo_n.PH_IN_SITU_TOTAL_ADJUSTED[p,:])):
+#                 'print pH out of range'
+#                 continue
     
-            #apply pH bias correction   
-            #find if there are valid values between fixed p levels 
-            pH_p_min = 1480
-            pH_p_max = 1520
+#             #apply pH bias correction   
+#             #find if there are valid values between fixed p levels 
+#             pH_p_min = 1480
+#             pH_p_max = 1520
     
-            #if there are valid pressure levels between 1480-1520 db, 
-            #calc bias correction only in this depth band, if not, calc correction between 970 and 1520
-            if any((argo_n.PRES_ADJUSTED[p,:]>1480) & (argo_n.PRES_ADJUSTED[p,:]<1520)):
+#             #if there are valid pressure levels between 1480-1520 db, 
+#             #calc bias correction only in this depth band, if not, calc correction between 970 and 1520
+#             if any((argo_n.PRES_ADJUSTED[p,:]>1480) & (argo_n.PRES_ADJUSTED[p,:]<1520)):
                 
-                inds = (argo_n.PRES_ADJUSTED[p,:]>1480) & (argo_n.PRES_ADJUSTED[p,:]<1520)
-                correction = -0.034529*argo_n.pH_25C_TOTAL_ADJUSTED[p,inds]+0.26709
+#                 inds = (argo_n.PRES_ADJUSTED[p,:]>1480) & (argo_n.PRES_ADJUSTED[p,:]<1520)
+#                 correction = -0.034529*argo_n.pH_25C_TOTAL_ADJUSTED[p,inds]+0.26709
                               
-            else:
-                inds = (argo_n.PRES_ADJUSTED[p,:]>970) & (argo_n.PRES_ADJUSTED[p,:]<1520)
-                correction = -0.034529*argo_n.pH_25C_TOTAL_ADJUSTED[p,inds]+0.26709
+#             else:
+#                 inds = (argo_n.PRES_ADJUSTED[p,:]>970) & (argo_n.PRES_ADJUSTED[p,:]<1520)
+#                 correction = -0.034529*argo_n.pH_25C_TOTAL_ADJUSTED[p,inds]+0.26709
 
-            if len(correction):
-                argo_n.bias_corr[p] = np.nanmean(correction)
-                argo_n.pH_insitu_corr[p,:] = argo_n.PH_IN_SITU_TOTAL_ADJUSTED[p,:]+argo_n.bias_corr[p]
-                argo_n.pH_25C_corr[p,:] = argo_n.pH_25C_TOTAL_ADJUSTED[p,:]+argo_n.bias_corr[p]
+#             if len(correction):
+#                 argo_n.bias_corr[p] = np.nanmean(correction)
+#                 argo_n.pH_insitu_corr[p,:] = argo_n.PH_IN_SITU_TOTAL_ADJUSTED[p,:]+argo_n.bias_corr[p]
+#                 argo_n.pH_25C_corr[p,:] = argo_n.pH_25C_TOTAL_ADJUSTED[p,:]+argo_n.bias_corr[p]
     
-        #call CO2sys again to get pCO2 with corrected PH- do we need to include this here?
-        results = pyco2.sys(
-                par1=argo_n.TALK_LIAR, 
-                par2=argo_n.pH_insitu_corr,
-                par1_type=1,
-                par2_type=3,
-                temperature=argo_n.TEMP_ADJUSTED, 
-                pressure=argo_n.PRES_ADJUSTED, 
-                salinity=argo_n.PSAL_ADJUSTED, 
-                temperature_out=25.* np.ones(argo_n.PRES_ADJUSTED.shape), #fixed 25C temperature
-                pressure_out=argo_n.PRES_ADJUSTED,
-                total_silicate=SI,
-                total_phosphate=PO4,
-                opt_pH_scale = 1, #total
-                opt_k_carbonic=10, #Lueker et al. 2000
-                opt_k_bisulfate=1, # Dickson 1990 (Note, matlab co2sys combines KSO4 with TB. option 3 = KSO4 of Dickson & TB of Lee 2010)
-                opt_total_borate=2, # Lee et al. 2010
-                opt_k_fluoride=2, # Perez and Fraga 1987
-                opt_buffers_mode=1,
-                )
+#         #call CO2sys again to get pCO2 with corrected PH- do we need to include this here?
+#         results = pyco2.sys(
+#                 par1=argo_n.TALK_LIAR, 
+#                 par2=argo_n.pH_insitu_corr,
+#                 par1_type=1,
+#                 par2_type=3,
+#                 temperature=argo_n.TEMP_ADJUSTED, 
+#                 pressure=argo_n.PRES_ADJUSTED, 
+#                 salinity=argo_n.PSAL_ADJUSTED, 
+#                 temperature_out=25.* np.ones(argo_n.PRES_ADJUSTED.shape), #fixed 25C temperature
+#                 pressure_out=argo_n.PRES_ADJUSTED,
+#                 total_silicate=SI,
+#                 total_phosphate=PO4,
+#                 opt_pH_scale = 1, #total
+#                 opt_k_carbonic=10, #Lueker et al. 2000
+#                 opt_k_bisulfate=1, # Dickson 1990 (Note, matlab co2sys combines KSO4 with TB. option 3 = KSO4 of Dickson & TB of Lee 2010)
+#                 opt_total_borate=2, # Lee et al. 2010
+#                 opt_k_fluoride=2, # Perez and Fraga 1987
+#                 opt_buffers_mode=1,
+#                 )
  
-        argo_n['pCO2_pH_corr'] = (['N_PROF','N_LEVELS'],results['pCO2'])  
+#         argo_n['pCO2_pH_corr'] = (['N_PROF','N_LEVELS'],results['pCO2'])  
     
     ##### now calc potential density, save, and interpolate data for comparison
     for p in range(nprof_n):
@@ -568,7 +568,7 @@ argo_interp.to_netcdf(data_dir+'argo_interp_temp.nc') # need to save one final t
 
 # +
 #toggle to plot offsets profile by profile
-plot_profile = 1
+plot_profile = 0
     
 #restrict glodap data to comparison pressure range
 gdap_p = gdap[(gdap.PRES_ADJUSTED.values>p_compare_min) & (gdap.PRES_ADJUSTED.values<p_compare_max)]

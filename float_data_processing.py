@@ -6,9 +6,9 @@
 #       extension: .py
 #       format_name: light
 #       format_version: '1.5'
-#       jupytext_version: 1.13.8
+#       jupytext_version: 1.14.0
 #   kernelspec:
-#     display_name: Python 3
+#     display_name: Python 3 (ipykernel)
 #     language: python
 #     name: python3
 # ---
@@ -24,8 +24,13 @@ import ftplib
 import getpass
 
 
-def get_glodap(save_dir, year=2021):
-    url = 'https://www.ncei.noaa.gov/data/oceans/ncei/ocads/data/0237935/GLODAPv2.'+str(year)+'_Merged_Master_File.csv'
+def get_glodap(save_dir, year):
+    if year==2021:
+        url = 'https://www.ncei.noaa.gov/data/oceans/ncei/ocads/data/0237935/GLODAPv2.'+str(year)+'_Merged_Master_File.csv'
+    elif year==2022:
+        url = 'https://www.ncei.noaa.gov/data/oceans/ncei/ocads/data/0257247/GLODAPv2.2022_Merged_Master_File.csv'
+
+    print(url)
     if not os.path.exists(save_dir+'GLODAPv2.'+str(year)+'_Merged_Master_File.csv'):
         os.system('wget %s -P %s' % (url,save_dir))
     gdap = pd.read_csv(save_dir+'GLODAPv2.'+str(year)+'_Merged_Master_File.csv')

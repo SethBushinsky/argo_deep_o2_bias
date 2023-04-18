@@ -21,8 +21,11 @@ import xarray as xr
 import glob, os
 import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
-from datetime import datetime, date, time
+from datetime import datetime, date, time, timedelta
 import time
+import gsw
+import scipy.stats as stats
+import matplotlib.dates as mdates
 
 # +
 # read in a user-created text file to point to local directories to avoid having to change this every time 
@@ -69,20 +72,18 @@ glodap_offsets = xr.load_dataset(output_dir+'glodap_offsets.nc')
 #group by main float wmo
 offsets_g = glodap_offsets.groupby(glodap_offsets.main_float_wmo)
 
-offsets_g
-
 # +
 #loop through each float
 fig = plt.figure(figsize=(16,16))
 
 for n,g in offsets_g:
     ncross = len(g.DOXY_ADJUSTED_offset)
-    
+
     #if doxy_adjusted_offset is nan, skip
     if np.all(np.isnan(g.DOXY_ADJUSTED_offset.values)):
         continue
-        
-    #add crossover location map  
+
+    #add crossover location map
     axn = plt.subplot(4,4,1)
     axn.plot(g.main_float_longitude,g.main_float_latitude,'g+',markersize=10,label='Current float')
     #glodap
@@ -90,15 +91,40 @@ for n,g in offsets_g:
     axn.plot(glodap_lon,g.glodap_latitude,'ro',label = 'Glodap',markersize=10)
     axn.legend()
     axn.set_title('WMO: %d, N crossovers: %d' % (g.main_float_wmo.values[0],ncross))
-    
+
     #time
     axn = plt.subplot(4,4,(2,4))
     axn.plot(g.main_float_juld,g.DOXY_ADJUSTED_offset,'rx',label='float')
     axn.plot(g.glodap_datetime,g.DOXY_ADJUSTED_offset,'bx',label='GDAP')
+
+    g_ox = g.where(~np.isnan(g.DOXY_ADJUSTED_offset), drop=True)
+    m1, b1 = np.polyfit(mdates.date2num(g_ox.main_float_juld),g_ox.DOXY_ADJUSTED_offset, 1)
+    t = np.arange(datetime(1980,1,1), datetime(2022,1,1), timedelta(days=1)).astype(datetime)
+    tnum = mdates.date2num(t)
+    axn.plot(t, m1*tnum+b1, "--", c="r")
+    axn.plot(g_ox.main_float_juld, m1*mdates.date2num(g_ox.main_float_juld)+b1, c="r")
+
+    m2, b2 = np.polyfit(mdates.date2num(g_ox.glodap_datetime),g_ox.DOXY_ADJUSTED_offset, 1)
+    t = np.arange(datetime(1980,1,1), datetime(2022,1,1), timedelta(days=1)).astype(datetime)
+    tnum = mdates.date2num(t)
+    axn.plot(t, m2*tnum+b2, "--", c="b")
+    axn.plot(g_ox.glodap_datetime, m2*mdates.date2num(g_ox.glodap_datetime)+b2, c="b")
+
     axn.axhline(y=0, color='k', linestyle='--')
     axn.legend()
+    joined_dates = mdates.date2num(sorted(np.append(g.glodap_datetime.values, g.main_float_juld.values)))
+    axn.set_xlim(mdates.num2date(joined_dates[0] - 365), mdates.num2date(joined_dates[-1] + 365))
+    try:
+        axn.set_ylim(min(g.DOXY_ADJUSTED_offset.values)  - 5,  max(g.DOXY_ADJUSTED_offset.values) + 5)
+    except ValueError:
+        pass
+
     axn.set_title('O2 Offsets vs date')
-    
+    axn.text(0.01, 0.01, "y = "+ str(m1.round(decimals=4)) +"x + " + str(b1.round(decimals=2)) + "\n"
+                                                                                                 "y = "+ str(m2.round(decimals=4)) +"x + " + str(b2.round(decimals=2)),
+             verticalalignment='bottom', horizontalalignment='left',
+             transform=axn.transAxes)
+
     #plot offset histograms
     axn = plt.subplot(4,5,6)
     g_plot = g.TEMP_ADJUSTED_offset
@@ -106,22 +132,27 @@ for n,g in offsets_g:
     g_std = np.nanstd(g_plot.values).round(decimals=2)
     axn.hist(g_plot,color='b',alpha=0.5)
     axn.set_title('TEMP %.2f +/- %.2f' % (g_mean,g_std))
-    
+
     axn = plt.subplot(4,5,7)
     g_plot = g.PSAL_ADJUSTED_offset
     g_mean = np.nanmean(g_plot.values).round(decimals=2)
     g_std = np.nanstd(g_plot.values).round(decimals=2)
     axn.hist(g_plot,color='b',alpha=0.5)
     axn.set_title('PSAL %.2f +/- %.2f' % (g_mean,g_std))
-    
+
     axn = plt.subplot(4,5,8)
     g_plot = g.DOXY_ADJUSTED_offset
     g_mean = np.nanmean(g_plot.values).round(decimals=2)
+    g_ttest = stats.ttest_1samp(a=g_plot.values[~np.isnan(g_plot)], popmean=g_mean) ############
     g_std = np.nanstd(g_plot.values).round(decimals=2)
     if not np.all(np.isnan(g_plot)):
         axn.hist(g_plot,color='b',alpha=0.5)
     axn.set_title('DOXY %.2f +/- %.2f' % (g_mean,g_std))
-    
+    axn.text(0.99, 0.99, "p_value: " + str(g_ttest[1].round(3)) + "\n"
+             + "t-statistic: " + str(g_ttest[0].round(2)),
+             verticalalignment='top', horizontalalignment='right',
+             transform=axn.transAxes)
+
     axn = plt.subplot(4,5,9)
     g_plot = g.NITRATE_ADJUSTED_offset
     g_mean = np.nanmean(g_plot.values).round(decimals=2)
@@ -129,7 +160,7 @@ for n,g in offsets_g:
     if not np.all(np.isnan(g_plot)):
         axn.hist(g_plot,color='b',alpha=0.5)
     axn.set_title('NO3 %.2f +/- %.2f' % (g_mean,g_std))
- 
+
     axn = plt.subplot(4,5,10)
     g_plot = g.NITRATE_ADJUSTED_offset
     g_mean = np.nanmean(g_plot.values).round(decimals=2)
@@ -137,49 +168,80 @@ for n,g in offsets_g:
     if not np.all(np.isnan(g_plot)):
         axn.hist(g_plot,color='b',alpha=0.5)
     axn.set_title('PH %.2f +/- %.2f' % (g_mean,g_std))
-    
 
-    #O2 vs pressure 
+
+    #O2 vs pressure
     axn = plt.subplot(4,4,9)
     axn.plot(g.DOXY_ADJUSTED_offset,g.PRES_ADJUSTED_float,'bx')
     axn.set_title('Float pres vs DOXY offset')
     plt.gca().invert_yaxis()
     axn.set_ylabel('pres')
-    
+
     axn = plt.subplot(4,4,10)
     axn.plot(g.DOXY_ADJUSTED_offset,g.PRES_ADJUSTED_glodap,'bx')
     axn.set_title('GDAP pres vs DOXY offset')
     plt.gca().invert_yaxis()
-    
-    #vs density 
+
+    #vs density
     axn = plt.subplot(4,4,11)
     axn.plot(g.DOXY_ADJUSTED_offset,g.PDENS_float,'bx')
     axn.set_title('Float Pdens vs DOXY offset')
     axn.set_ylabel('dens')
-    
+
     axn = plt.subplot(4,4,12)
     axn.plot(g.DOXY_ADJUSTED_offset,g.PDENS_glodap,'bx')
     axn.set_title('GDAP Pdens vs DOXY offset')
-    
+
     #O2 offset vs o2 concentration
     axn = plt.subplot(4,4,13)
     axn.plot(g.DOXY_ADJUSTED_offset,g.DOXY_ADJUSTED_float,'bx')
     axn.set_title('Float O2 vs DOXY offset')
     axn.set_ylabel('O2 concentration')
-    
-    #T-S coloured by O2 offset
+
+    # Add density lines FLOAT
+    smax = float(max(g.PSAL_ADJUSTED_float)) + 0.1
+    smin = float(min(g.PSAL_ADJUSTED_float)) - 0.1
+    tmax = float(max(g.TEMP_ADJUSTED_float)) + 0.1
+    tmin = float(min(g.TEMP_ADJUSTED_float)) - 0.1
+    # Create temp and salt vectors of appropiate dimensions
+    ti = np.linspace(tmin,tmax,num=int(round((tmax-tmin)*10 + 1, 0)))
+    si = np.linspace(smin,smax,num=int(round((smax-smin)*10 + 1, 0)))
+    dens = np.zeros((len(ti),len(si)))
+    # Loop to fill in grid with densities
+    for j in range(0,len(ti)):
+        for i in range(0, len(si)):
+            dens[j,i]=gsw.sigma0(si[i],ti[j])
+
     axn = plt.subplot(4,4,14)
+    CS = plt.contour(si,ti,dens, linestyles='dashed', colors='k')
+    axn.clabel(CS, fontsize=12, inline=1)
     axn.scatter(g.PSAL_ADJUSTED_float,g.TEMP_ADJUSTED_float,c=g.DOXY_ADJUSTED_offset)
+    axn.set_xlim(min(g.PSAL_ADJUSTED_float) - .1, max(g.PSAL_ADJUSTED_float) + .1)
+    axn.set_ylim(min(g.TEMP_ADJUSTED_float) - 0.1, max(g.TEMP_ADJUSTED_float) + 0.1)
     axn.set_title('float T-S')
-    
+
+    # Add density lines GLODAP
+    smax = float(max(g.PSAL_ADJUSTED_glodap)) + 0.1
+    smin = float(min(g.PSAL_ADJUSTED_glodap)) - 0.1
+    tmax = float(max(g.TEMP_ADJUSTED_glodap)) + 0.1
+    tmin = float(min(g.TEMP_ADJUSTED_glodap)) - 0.1
+    # Create temp and salt vectors of appropiate dimensions
+    ti = np.linspace(tmin,tmax,num=int(round((tmax-tmin)*10 + 1, 0)))
+    si = np.linspace(smin,smax,num=int(round((smax-smin)*10 + 1, 0)))
+    dens = np.zeros((len(ti),len(si)))
+    # Loop to fill in grid with densities
+    for j in range(0,len(ti)):
+        for i in range(0, len(si)):
+            dens[j,i]=gsw.sigma0(si[i],ti[j])
+
     axn = plt.subplot(4,4,15)
+    CS = plt.contour(si,ti,dens, linestyles='dashed', colors='k')
+    axn.clabel(CS, fontsize=12, inline=1)
     cn = axn.scatter(g.PSAL_ADJUSTED_glodap,g.TEMP_ADJUSTED_glodap,c=g.DOXY_ADJUSTED_offset)
     axn.set_title('GDAP T-S')
-    
     cx = fig.add_axes([0.72,0.12,0.02,0.17])
     plt.colorbar(cn,cax=cx,label='DOXY OFFSET')
 
-    
     plt.savefig(offset_dir+ 'individual_floats/' + str(g.main_float_wmo.values[0])+'_v_glodap.png')
     plt.clf()
   
@@ -474,7 +536,7 @@ for n,group in offsets_g:
 
 plt.xlabel('DOXY Offset')
 plt.legend()
-plt.savefig(offset_dir + 'Glodap_offsets_doxy_all_'+parameter_a+parameter_b+'_v2.png')
+plt.savefig(offset_dir + 'Glodap_offsets_doxy_all_'+parameter_a+parameter_b+'_v3.png')
 # -
 
 # ### 4. Example: map offsets for single float sub-group
@@ -502,7 +564,7 @@ for n, group in offsets_g1:
         cbar = plt.colorbar(sct, fraction=.08, pad = 0.04, shrink=0.5)
         cbar.set_label('O2 offset', labelpad=15, fontsize=14)
         #plt.scatter(glodap_offsets.glodap_longitude,glodap_offsets.glodap_longitude,s=4)
-        plt.savefig(offset_dir+ 'map_o2_offsets_air_only.png')
+        plt.savefig(offset_dir+ 'map_o2_offsets_air_only_v3.png')
         plt.show()
 
 # ### 5. Example: histogram of all global DOXY offsets, mean of each float
