@@ -200,6 +200,12 @@ gdap = gdap.rename(columns={'G2longitude':'LONGITUDE', 'G2latitude':'LATITUDE', 
 
 # ## 2. Apply float bias corrections 
 
+argo_path
+argo_n = xr.load_dataset(argo_path + '6903768_Sprof.nc')
+
+TT  = argo_n['PRES_QC'].values.astype('float')
+TT
+
 # +
 append_data = 0 #reads in and adds to argo_interp_temp.nc rather than overwriting and running all floats
 argolist = []
