@@ -97,22 +97,22 @@ if not os.path.isdir(argo_path_derived):
 
 # +
 #pressure limits for interpolation
-p_interp_min = 1050 #minimum pressure for float crossover comparison
+p_interp_min = 1450 #minimum pressure for float crossover comparison
 p_interp_max = 2000 #maximum pressure for float crossover comparison
 #pressure levels to interpolate to, every 1db
 p_interp = np.arange(p_interp_min,p_interp_max+1)
 
 #pressure limits for crossover comparison
-p_compare_min = 1480
+p_compare_min = 1450
 p_compare_max = 2000
 
 #crossover distance range
-dist = 50.
+dist = 100
 
 #max density difference to store crossover
 delta_dens = 0.0005
 #max spice difference to store crossover
-delta_spice = 0.01
+delta_spice = 0.005
 
 #variables to do crossovers
 var_list_plot = ['PRES_ADJUSTED','TEMP_ADJUSTED','PSAL_ADJUSTED','DOXY_ADJUSTED','NITRATE_ADJUSTED',
@@ -199,12 +199,6 @@ gdap = gdap.rename(columns={'G2longitude':'LONGITUDE', 'G2latitude':'LATITUDE', 
                             'pH_in_situ_total':'PH_IN_SITU_TOTAL_ADJUSTED','sigma0_calculated':'PDENS'})
 
 # ## 2. Apply float bias corrections 
-
-argo_path
-argo_n = xr.load_dataset(argo_path + '6903768_Sprof.nc')
-
-TT  = argo_n['PRES_QC'].values.astype('float')
-TT
 
 # +
 append_data = 0 #reads in and adds to argo_interp_temp.nc rather than overwriting and running all floats
@@ -384,6 +378,7 @@ for n in range(len(argolist_run)):
                                 np.reshape(np.asarray(results),argo_n.PH_IN_SITU_TOTAL_ADJUSTED.shape))
   
     
+        # Keep DIC bc I might want it for crossover comparison
         ##### Calculate float pH at 25C, DIC and apply bias corr
         results = pyco2.sys(
                 par1=argo_n.TALK_LIAR, 

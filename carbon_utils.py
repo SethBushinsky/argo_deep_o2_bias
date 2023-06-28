@@ -26,7 +26,7 @@ import matlab.engine
 
 # ### LIAR/LIPHR wrapper
 
-def LIPHR_matlab(LIPHR_path,Coordinates,Measurements,MeasIDVec,OAAdjustTF=False):
+def LIPHR_matlab(LIPHR_path,Coordinates,Measurements,MeasIDVec,OAAdjustTF=False,VerboseTF=False):
 #launch MATLAB engine API
     eng = matlab.engine.start_matlab()
 

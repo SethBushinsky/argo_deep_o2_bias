@@ -57,6 +57,7 @@ data_dir = 'data/'
 offset_dir = output_dir + 'glodap_offset_plots/'
 if not os.path.isdir(offset_dir):
     os.mkdir(offset_dir)
+if not os.path.isdir(offset_dir+'individual_floats/'):
     os.mkdir(offset_dir+'individual_floats/')
 # -
 
@@ -132,6 +133,8 @@ for n,g in offsets_g:
     g_std = np.nanstd(g_plot.values).round(decimals=2)
     axn.hist(g_plot,color='b',alpha=0.5)
     axn.set_title('TEMP %.2f +/- %.2f' % (g_mean,g_std))
+    plt.grid()
+
 
     axn = plt.subplot(4,5,7)
     g_plot = g.PSAL_ADJUSTED_offset
@@ -139,6 +142,7 @@ for n,g in offsets_g:
     g_std = np.nanstd(g_plot.values).round(decimals=2)
     axn.hist(g_plot,color='b',alpha=0.5)
     axn.set_title('PSAL %.2f +/- %.2f' % (g_mean,g_std))
+    plt.grid()
 
     axn = plt.subplot(4,5,8)
     g_plot = g.DOXY_ADJUSTED_offset
@@ -152,6 +156,7 @@ for n,g in offsets_g:
              + "t-statistic: " + str(g_ttest[0].round(2)),
              verticalalignment='top', horizontalalignment='right',
              transform=axn.transAxes)
+    plt.grid()
 
     axn = plt.subplot(4,5,9)
     g_plot = g.NITRATE_ADJUSTED_offset
@@ -160,14 +165,16 @@ for n,g in offsets_g:
     if not np.all(np.isnan(g_plot)):
         axn.hist(g_plot,color='b',alpha=0.5)
     axn.set_title('NO3 %.2f +/- %.2f' % (g_mean,g_std))
+    plt.grid()
 
     axn = plt.subplot(4,5,10)
-    g_plot = g.NITRATE_ADJUSTED_offset
+    g_plot = g.pH_25C_TOTAL_ADJUSTED_offset
     g_mean = np.nanmean(g_plot.values).round(decimals=2)
     g_std = np.nanstd(g_plot.values).round(decimals=2)
     if not np.all(np.isnan(g_plot)):
         axn.hist(g_plot,color='b',alpha=0.5)
-    axn.set_title('PH %.2f +/- %.2f' % (g_mean,g_std))
+    axn.set_title('PH 25C %.2f +/- %.2f' % (g_mean,g_std))
+    plt.grid()
 
 
     #O2 vs pressure
@@ -176,27 +183,32 @@ for n,g in offsets_g:
     axn.set_title('Float pres vs DOXY offset')
     plt.gca().invert_yaxis()
     axn.set_ylabel('pres')
+    plt.grid()
 
     axn = plt.subplot(4,4,10)
     axn.plot(g.DOXY_ADJUSTED_offset,g.PRES_ADJUSTED_glodap,'bx')
     axn.set_title('GDAP pres vs DOXY offset')
     plt.gca().invert_yaxis()
+    plt.grid()
 
     #vs density
     axn = plt.subplot(4,4,11)
     axn.plot(g.DOXY_ADJUSTED_offset,g.PDENS_float,'bx')
     axn.set_title('Float Pdens vs DOXY offset')
     axn.set_ylabel('dens')
+    plt.grid()
 
     axn = plt.subplot(4,4,12)
     axn.plot(g.DOXY_ADJUSTED_offset,g.PDENS_glodap,'bx')
     axn.set_title('GDAP Pdens vs DOXY offset')
+    plt.grid()
 
     #O2 offset vs o2 concentration
     axn = plt.subplot(4,4,13)
     axn.plot(g.DOXY_ADJUSTED_offset,g.DOXY_ADJUSTED_float,'bx')
     axn.set_title('Float O2 vs DOXY offset')
     axn.set_ylabel('O2 concentration')
+    plt.grid()
 
     # Add density lines FLOAT
     smax = float(max(g.PSAL_ADJUSTED_float)) + 0.1
@@ -245,6 +257,8 @@ for n,g in offsets_g:
     plt.savefig(offset_dir+ 'individual_floats/' + str(g.main_float_wmo.values[0])+'_v_glodap.png')
     plt.clf()
   
+    # wait = input("Press Enter to continue.")
+    
 # -
 
 # ### 2. Combine metadata (calibration, instrument etc) with offsets so offsets can be sorted and plotted using different criteria

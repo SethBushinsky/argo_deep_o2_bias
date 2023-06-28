@@ -30,8 +30,32 @@ import shutil
 
 # +
 # Base filepath
-root = "/Users/veronicatamsitt/stash/float_bgc_synthesis_products/data/"
-profile_dir = root + 'argo_Sprof_030123/'
+# root = "/Users/veronicatamsitt/stash/float_bgc_synthesis_products/data/"
+# profile_dir = root + 'argo_Sprof_030123/'
+
+# +
+# read in a user-created text file to point to local directories to avoid having to change this every time 
+# we update code
+lines=[]
+with open('path_file.txt') as f:
+    lines = f.readlines()
+    
+count = 0
+for line in lines:
+    count += 1
+    index = line.find("=")
+    #print(f'line {count}: {line}')
+    #print(index)
+    #print(line[0:index])
+    line = line.rstrip()
+    if line[0:index].find("argo")>=0:
+        root=line[index+1:]
+    elif line[0:index].find("liar")>=0:
+        liar_dir=line[index+1:]
+    elif line[0:index].find("matlab")>=0:
+        matlab_dir=line[index+1:]
+profile_dir = root
+root = root + '../'
 
 #make profile_dir if it doesn't exist
 if not os.path.isdir(profile_dir):
