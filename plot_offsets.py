@@ -66,12 +66,23 @@ if not os.path.isdir(offset_dir+'individual_floats/'):
 #
 # First load saved glodap offsets
 
+# +
+if 'glodap_offsets' in locals():
+    glodap_offsets.close()
+
 glodap_offsets = xr.load_dataset(output_dir+'glodap_offsets.nc')
+# -
 
 # plot histograms of offsets for each main float with all crossovers
 
+glodap_offsets
+
 #group by main float wmo
 offsets_g = glodap_offsets.groupby(glodap_offsets.main_float_wmo)
+
+g.DOXY_ADJUSTED_offset[g.DOXY_ADJUSTED_offset.values<-20]
+
+g.main_float_profile[g.DOXY_ADJUSTED_offset.values<-20]
 
 # +
 #loop through each float
