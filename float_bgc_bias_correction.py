@@ -203,14 +203,17 @@ gdap = gdap.rename(columns={'G2longitude':'LONGITUDE', 'G2latitude':'LATITUDE', 
 # ## 2. Apply float bias corrections 
 
 # +
-if 'argo_interp' in locals():
-    argo_interp.close()
-    
+
 # 0: overwrites and runs all floats in the argo_path directory 
 # 1: reads in and adds to argo_interp_temp.nc rather than overwriting and running all floats
 # 2: runs specific floats listed below
 append_data = 2 
+### 
+if 'argo_interp' in locals():
+    argo_interp.close()
+    
 argolist = []
+
 for file in os.listdir(argo_path):
     if file.endswith('Sprof.nc'):
         argolist.append(file)
@@ -587,7 +590,7 @@ argo_interp.close() # close dataset to avoid keeping in memory by accident
 
 # ## 3. Compare float - GLODAP crossovers
 
-argo_interp
+gdap
 
 # +
 if 'argo_wmo' in locals():
@@ -640,7 +643,7 @@ for wmo, group in argo_wmo:
     lon_max = group.LONGITUDE.values+lon_tol
 
     #find all data in lat-lon limits
-    for n in range(3, 4): #range(nprof): #  #
+    for n in range(3, 4): #range(nprof): #   #
         print(group.profile[n].values)
 
         #index of all gdap profiles within distance range
@@ -787,7 +790,7 @@ for wmo, group in argo_wmo:
                 os.mkdir(offset_dir + 'individual_floats/' + str(wmo))
     
             print('Plotting float '+str(group.wmo[0].values) + ' profile' + str(group.profile[n].values))
-            fig = plt.figure(figsize=(8,16))
+            fig = plt.figure(figsize=(10,16))
             
             #DOXY_ADJUSTED
             #dens_inds = dens_inds[dens_inds>0] #only keep valid indices
@@ -797,7 +800,7 @@ for wmo, group in argo_wmo:
             max_dens = 0
             min_dens = 300
             
-            axn = plt.subplot(3,2,1)
+            axn = plt.subplot(3,3,1)
             #plot float profile and matchups
             axn.scatter(group.DOXY_ADJUSTED[n,:],group.PRES_ADJUSTED[n,:],s=4,c='orangered',marker='o')
             # commenting this out, because dens_inds is specific to an individual glodap crossover   
@@ -844,7 +847,7 @@ for wmo, group in argo_wmo:
                       max_o2 + 20])            
              
              #PDENS
-            axn = plt.subplot(3,2,2)
+            axn = plt.subplot(3,3,2)
             #plot float profile and matchups
             axn.scatter(group.PDENS[n,:],group.PRES_ADJUSTED[n,:],s=4,c='orangered',marker='o')
             
@@ -874,7 +877,7 @@ for wmo, group in argo_wmo:
 
             
            #DOXY vs PDENS
-            axn = plt.subplot(3,2,3)
+            axn = plt.subplot(3,3,4)
             #plot float profile and matchups
             axn.scatter(group.DOXY_ADJUSTED[n,:],group.PDENS[n,:],s=4,c='orangered',marker='o')
 
@@ -902,7 +905,7 @@ for wmo, group in argo_wmo:
             plt.ylim([min_dens-.05, max_dens+.05])
 
             #print cruise names and dates
-            axn = plt.subplot(3,2,4)
+            axn = plt.subplot(3,3,3)
             axn.text(0.05,0.95,'G2cruise G2station G2date',fontsize=12)
             yn=0.9
             for m in range(len(match_inds)):
@@ -910,23 +913,48 @@ for wmo, group in argo_wmo:
 
                     off_ind = gdap_match['G2cruise'].index[m]
                 
-                    if m == 0:
-                        axn.text(0.05,yn,str(gdap_match.G2cruise[off_ind])+' '+str(gdap_match.G2station[off_ind])+' '+str(gdap_match.datetime[off_ind])+' '+str(o2_offsets[m]))
-                        print()
-                        yn=yn-0.05
-                    elif gdap_match.G2cruise[off_ind] != cc:
-                        axn.text(0.05,yn,str(gdap_match.G2cruise[off_ind])+' '+str(gdap_match.G2station[off_ind])+' '+str(gdap_match.datetime[off_ind]))
-                        yn=yn-0.05    
-                    cc = gdap_match.G2cruise[off_ind] #current cruise to compare with next 
-                 
+                    #if m == 0:
+                    axn.text(0.05,yn,str(gdap_match.G2cruise[off_ind])+' '
+                             +str(gdap_match.G2station[off_ind])+' '
+                             +str(gdap_match.datetime[off_ind])+' '
+                             +str(round(o2_offsets[m],2)))
+                    print()
+                    yn=yn-0.05
+                    #elif gdap_match.G2cruise[off_ind] != cc:
+                    #    axn.text(0.05,yn,str(gdap_match.G2cruise[off_ind])+' '+str(gdap_match.G2station[off_ind])+' '+str(gdap_match.datetime[off_ind]))
+                    #    yn=yn-0.05    
+                    #cc = gdap_match.G2cruise[off_ind] #current cruise to compare with next 
+            
+            # map of offsets:
+            ax = plt.subplot(3,3,5,subplot_kw={'projection': ccrs.PlateCarree()})
+
+            #ax = plt.axes(projection=ccrs.PlateCarree())
+            ax.coastlines()
+            ax.set_global()
+            # find any longitude values over 180, then subtract
+            temp_lon = gdap_match.LONGITUDE.values
+            temp_lon[temp_lon>180] = temp_lon[temp_lon>180]-360
+
+            max_lon = np.nanmax(temp_lon[~np.isnan(o2_offsets)])
+            min_lon = np.nanmin(temp_lon[~np.isnan(o2_offsets)])
+            max_lat = np.nanmax(gdap_match.LATITUDE.values[~np.isnan(o2_offsets)])
+            min_lat = np.nanmin(gdap_match.LATITUDE.values[~np.isnan(o2_offsets)])
+
+            # only plot gdap locations where offsets exist
+            #plt.plot(temp_lon[~np.isnan(o2_offsets)],gdap_match.LATITUDE.values[~np.isnan(o2_offsets)],marker='x')
+            scat = plt.scatter(temp_lon[~np.isnan(o2_offsets)],gdap_match.LATITUDE.values[~np.isnan(o2_offsets)], c=o2_offsets[~np.isnan(o2_offsets)])
+            plt.xlim([min_lon - .05, max_lon+.05])
+            plt.ylim([min_lat - .05, max_lat+.05])
+            plt.colorbar(scat, ax=ax)
+            #plt.show()
             #histogram of offsets
-            axn = plt.subplot(3,2,5)
+            axn = plt.subplot(3,3,7)
             o2_offsets[o2_offsets==np.inf] = np.nan
             if not np.all(np.isnan(o2_offsets)):
                 axn.hist(o2_offsets[~np.isnan(o2_offsets)],color='b')
                 plt.xlabel('DOXY_OFFSETS')
                 
-            axn = plt.subplot(3,2,6)
+            axn = plt.subplot(3,3,8)
             dens_offsets[dens_offsets==np.inf] = np.nan
             if not np.all(np.isnan(dens_offsets)):
                 axn.hist(dens_offsets[~np.isnan(o2_offsets)],color='b')
@@ -934,10 +962,59 @@ for wmo, group in argo_wmo:
                 plt.xticks(rotation = 45)
             plt.savefig(offset_dir+ 'individual_floats/' + str(wmo) + '/' + str(group.wmo[0].values) + ' profile' + str(int(group.profile[n].values)))
             plt.clf()
+
+
+# +
+
+temp_lon
+
+# +
+ax = plt.axes(projection=ccrs.PlateCarree())
+ax.coastlines()
+ax.set_global()
+# find any longitude values over 180, then subtract
+temp_lon = gdap_match.LONGITUDE.values
+temp_lon[temp_lon>180] = temp_lon[temp_lon>180]-360
+
+max_lon = np.nanmax(temp_lon[~np.isnan(o2_offsets)])
+min_lon = np.nanmin(temp_lon[~np.isnan(o2_offsets)])
+max_lat = np.nanmax(gdap_match.LATITUDE.values[~np.isnan(o2_offsets)])
+min_lat = np.nanmin(gdap_match.LATITUDE.values[~np.isnan(o2_offsets)])
+
+# only plot gdap locations where offsets exist
+#plt.plot(temp_lon[~np.isnan(o2_offsets)],gdap_match.LATITUDE.values[~np.isnan(o2_offsets)],marker='x')
+scat = plt.scatter(temp_lon[~np.isnan(o2_offsets)],gdap_match.LATITUDE.values[~np.isnan(o2_offsets)], c=o2_offsets[~np.isnan(o2_offsets)])
+plt.xlim([min_lon - .05, max_lon+.05])
+plt.ylim([min_lat - .05, max_lat+.05])
+plt.colorbar(scat, ax=ax)
+plt.show()
+
+# +
+for m in range(len(match_inds)):
+                gdap_offset_ind = gdap_match[var].index[m]
+
+                if ~np.isnan(o2_offsets[m]): # only plot glodap data if there is a non-nan crossover
+    
+                   # axn.scatter(group.PDENS[n,dens_inds[m]],group.PRES_ADJUSTED[n,dens_inds[m]],s=50,c='k',marker='s')
+
+                   # cruise = gdap_match.G2cruise[gdap_offset_ind]
+                  #  stat = gdap_match.G2station[gdap_offset_ind]
+                                #plot all glodap data that match these cruise and stations
+                  #  axn.plot(gdap.loc[(gdap['G2cruise']==cruise) & (gdap['G2station']==stat),'PDENS'].values,
+                  #       gdap.loc[(gdap['G2cruise']==cruise) & (gdap['G2station']==stat),'PRES_ADJUSTED'].values,
+                  #      'm+-',linewidth=0.3)
+                   # axn.scatter(gdap_match.PDENS.values[m],
+                  #          gdap_match.PRES_ADJUSTED.values[m],s=50,c='b',marker='D')
+                    plt.plot(gdap_match.LONGITUDE.values[m], gdap_match.LATITUDE.values[m], linestyle='none', marker='.', markersize=10, color='m')
+                    print(gdap_match.LONGITUDE.values[m])
+                    print(gdap_match.LATITUDE.values[m])
+
+                    #plt.plot(argo_all.LONGITUDE, argo_all.LATITUDE, linestyle='none', marker='.', markersize=1)
+
+plt.show()
 # -
 
-
-str(o2_offsets[m])
+match_inds
 
 # +
 #convert GLODAP offset lists to xarray and save to netcdf
