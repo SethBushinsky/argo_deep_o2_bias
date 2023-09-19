@@ -28,6 +28,8 @@ import scipy.stats as stats
 import matplotlib.dates as mdates
 
 # +
+glodap_offsets_filename = 'glodap_offsets_100km_1450_to_2000_100m_0.005dens_0.005spice.nc'
+
 # read in a user-created text file to point to local directories to avoid having to change this every time 
 # we update code
 lines=[]
@@ -59,6 +61,76 @@ if not os.path.isdir(offset_dir):
     os.mkdir(offset_dir)
 if not os.path.isdir(offset_dir+'individual_floats/'):
     os.mkdir(offset_dir+'individual_floats/')
+
+
+# +
+def test_stat(y, iteration, verboseTF):
+    std_dev = np.std(y)
+    avg_y = np.mean(y)
+    abs_val_minus_avg = abs(y - avg_y)
+    max_of_deviations = max(abs_val_minus_avg)
+    max_ind = np.argmax(abs_val_minus_avg)
+    cal = max_of_deviations/ std_dev
+    if verboseTF:
+        print('Test {}'.format(iteration))
+        print("Test Statistics Value(R{}) : {}".format(iteration,cal))
+    return cal, max_ind
+
+def calculate_critical_value(size, alpha, iteration, verboseTF):
+    t_dist = stats.t.ppf(1 - alpha / (2 * size), size - 2)
+    numerator = (size - 1) * np.sqrt(np.square(t_dist))
+    denominator = np.sqrt(size) * np.sqrt(size - 2 + np.square(t_dist))
+    critical_value = numerator / denominator
+    if verboseTF:
+        print("Critical Value(λ{}): {}".format(iteration, critical_value))
+    return critical_value
+
+def check_values(R, C, inp, max_index, iteration):
+    if R > C:
+        print('{} is an outlier. R{} > λ{}: {:.4f} > {:.4f} \n'.format(inp[max_index],iteration, iteration, R, C))
+    else:
+        print('{} is not an outlier. R{}> λ{}: {:.4f} > {:.4f} \n'.format(inp[max_index],iteration, iteration, R, C))
+
+
+
+
+def ESD_Test(input_series, alpha, max_outliers, verboseTF):
+    stats = []
+    critical_vals = []
+    tested_values = []
+    max_i = 0
+    for iterations in range(1, max_outliers + 1):
+        stat, max_index = test_stat(input_series, iterations, verboseTF)
+        critical = calculate_critical_value(len(input_series), alpha, iterations, verboseTF)
+        if verboseTF:
+            check_values(stat, critical, input_series, max_index, iterations)
+        tested_values.append(input_series[max_index])
+        input_series = np.delete(input_series, max_index)
+        critical_vals.append(critical)
+        stats.append(stat)
+        if stat > critical:
+            max_i = iterations
+    print('H0:  there are no outliers in the data')
+    print('Ha:  there are up to 10 outliers in the data')
+    print('')
+    print('Significance level:  α = {}'.format(alpha))
+    print('Critical region:  Reject H0 if Ri > critical value')
+    print('Ri: Test statistic')
+    print('λi: Critical Value')
+    print(' ')
+    df = pd.DataFrame({'i' :range(1, max_outliers + 1), 'Ri': stats, 'λi': critical_vals , 'Vals': tested_values})
+    
+    def highlight_max(x):
+        if x.i == max_i:
+            return ['background-color: yellow']*4
+        else:
+            return ['background-color: white']*4
+    df.index = df.index + 1
+    print('Number of outliers {}'.format(max_i))
+    print(max_i)
+    return  df.style.apply(highlight_max, axis = 1), max_i, tested_values
+
+
 # -
 
 # ### 1. Load offsets and look at offset summary plots for each float
@@ -70,25 +142,51 @@ if not os.path.isdir(offset_dir+'individual_floats/'):
 if 'glodap_offsets' in locals():
     glodap_offsets.close()
 
-glodap_offsets = xr.load_dataset(output_dir+'glodap_offsets.nc')
+glodap_offsets = xr.load_dataset(output_dir+glodap_offsets_filename)
 # -
 
 # plot histograms of offsets for each main float with all crossovers
 
-glodap_offsets
-
 #group by main float wmo
 offsets_g = glodap_offsets.groupby(glodap_offsets.main_float_wmo)
 
-g.DOXY_ADJUSTED_offset[g.DOXY_ADJUSTED_offset.values<-20]
+# Determine outliers and remove, creating a "DOXY_ADJUSTED_offset_trimmed" variable
 
-g.main_float_profile[g.DOXY_ADJUSTED_offset.values<-20]
+# +
+DOXY_ADJUSTED_offset_trimmed = []
+for n,g in offsets_g:
+    
+    # run a GESD test using "test_num" number of possible outliers
+    test_num = int((len(g.DOXY_ADJUSTED_offset.dropna(dim="N_CROSSOVERS", how="any").values)*.1))
+    ESD_test_out = ESD_Test(g.DOXY_ADJUSTED_offset.dropna(dim="N_CROSSOVERS", how="any").values, 0.05, test_num, False)
+
+
+    # create temp_o2_offest to set all datapoints to nans that the GESD test says are outliers
+    temp_o2_offset = g.DOXY_ADJUSTED_offset
+    for a in range(0, ESD_test_out[1]):
+        temp_o2_offset = temp_o2_offset.where(temp_o2_offset != ESD_test_out[2][a])
+        
+    # append each temp_o2_offset to the new DOXY_ADJUSTED_offset_trimmed vector
+    DOXY_ADJUSTED_offset_trimmed.append(temp_o2_offset.values)
+    #print(len(DOXY_ADJUSTED_offset_trimmed))
+
+# concatenate all vectors within DOXY_ADJUSTED_offset_trimmed (each represents one WMO)
+result_vector = np.concatenate(DOXY_ADJUSTED_offset_trimmed)
+# convert to Xarray DataArray
+result_da = xr.DataArray(result_vector, dims='N_CROSSOVERS', coords={'N_CROSSOVERS': glodap_offsets['N_CROSSOVERS']})
+# add to glodap_offsets
+glodap_offsets['DOXY_ADJUSTED_offset_trimmed']=result_da
+print(glodap_offsets)
+
+# then group again by WMO, now with the new variable:
+offsets_g = glodap_offsets.groupby(glodap_offsets.main_float_wmo)
 
 # +
 #loop through each float
 fig = plt.figure(figsize=(16,16))
 
 for n,g in offsets_g:
+    print(n)
     ncross = len(g.DOXY_ADJUSTED_offset)
 
     #if doxy_adjusted_offset is nan, skip
@@ -102,13 +200,20 @@ for n,g in offsets_g:
     glodap_lon = xr.where(g.glodap_longitude>180,g.glodap_longitude-360.,g.glodap_longitude)
     axn.plot(glodap_lon,g.glodap_latitude,'ro',label = 'Glodap',markersize=10)
     axn.legend()
-    axn.set_title('WMO: %d, N crossovers: %d' % (g.main_float_wmo.values[0],ncross))
+    axn.set_title('WMO: %d; N: %d; Dist filt %d; Depth min %d max %d\nDepth filt %d; Dens %.4f; Spice %.4f' % 
+                  (g.main_float_wmo.values[0],ncross, glodap_offsets["dist"],
+                   glodap_offsets["p_compare_min"], 
+                   glodap_offsets["p_compare_max"],glodap_offsets["delta_press"],
+                   glodap_offsets["delta_dens"],glodap_offsets["delta_spice"]))
 
     #time
     axn = plt.subplot(4,4,(2,4))
     axn.plot(g.main_float_juld,g.DOXY_ADJUSTED_offset,'rx',label='float')
+    axn.plot(g.main_float_juld,g.DOXY_ADJUSTED_offset_trimmed,'ro',label='float_outliers_removed', markerfacecolor="None")
     axn.plot(g.glodap_datetime,g.DOXY_ADJUSTED_offset,'bx',label='GDAP')
+    axn.plot(g.glodap_datetime,g.DOXY_ADJUSTED_offset_trimmed,'bo', markerfacecolor="None")
 
+    # fit regressions
     g_ox = g.where(~np.isnan(g.DOXY_ADJUSTED_offset), drop=True)
     m1, b1 = np.polyfit(mdates.date2num(g_ox.main_float_juld),g_ox.DOXY_ADJUSTED_offset, 1)
     t = np.arange(datetime(1980,1,1), datetime(2022,1,1), timedelta(days=1)).astype(datetime)
@@ -133,11 +238,12 @@ for n,g in offsets_g:
 
     axn.set_title('O2 Offsets vs date')
     axn.text(0.01, 0.01, "y = "+ str(m1.round(decimals=4)) +"x + " + str(b1.round(decimals=2)) + "\n"
-                                                                                                 "y = "+ str(m2.round(decimals=4)) +"x + " + str(b2.round(decimals=2)),
+             "y = "+ str(m2.round(decimals=4)) +"x + " + str(b2.round(decimals=2)),
              verticalalignment='bottom', horizontalalignment='left',
              transform=axn.transAxes)
 
-    #plot offset histograms
+    # plot offset histograms
+    # Temperature
     axn = plt.subplot(4,5,6)
     g_plot = g.TEMP_ADJUSTED_offset
     g_mean = np.nanmean(g_plot.values).round(decimals=2)
@@ -146,7 +252,7 @@ for n,g in offsets_g:
     axn.set_title('TEMP %.2f +/- %.2f' % (g_mean,g_std))
     plt.grid()
 
-
+    #Salinity
     axn = plt.subplot(4,5,7)
     g_plot = g.PSAL_ADJUSTED_offset
     g_mean = np.nanmean(g_plot.values).round(decimals=2)
@@ -155,21 +261,57 @@ for n,g in offsets_g:
     axn.set_title('PSAL %.2f +/- %.2f' % (g_mean,g_std))
     plt.grid()
 
+    # Oxygen histogram
     axn = plt.subplot(4,5,8)
     g_plot = g.DOXY_ADJUSTED_offset
-    g_mean = np.nanmean(g_plot.values).round(decimals=2)
-    g_ttest = stats.ttest_1samp(a=g_plot.values[~np.isnan(g_plot)], popmean=g_mean) ############
+    g_mean = np.nanmean(g_plot.values)
+    t_stat, p_value = stats.ttest_1samp(a=g_plot, popmean=0, nan_policy='omit') ############
+    
     g_std = np.nanstd(g_plot.values).round(decimals=2)
+
+    g_plot_trim = g.DOXY_ADJUSTED_offset_trimmed
+    g_mean_trim = np.nanmean(g_plot_trim.values)
+    g_std_trim = np.nanstd(g_plot_trim.values).round(decimals=2)
+
+    t_stat_trim, p_value_trim = stats.ttest_1samp(a=g_plot_trim, popmean=0, nan_policy='omit') ############
+
+    CI_99 = stats.norm.interval(alpha=0.99, 
+                 loc=np.nanmean(g_plot_trim[~np.isnan(g_plot_trim)].values), 
+                 scale = stats.sem(g_plot_trim[~np.isnan(g_plot_trim)].values))
+    
+    #g_ttest = stats.ttest_1samp(a=g_plot.values[~np.isnan(g_plot)], popmean=g_mean) ############
     if not np.all(np.isnan(g_plot)):
-        axn.hist(g_plot,color='b',alpha=0.5)
-    axn.set_title('DOXY %.2f +/- %.2f' % (g_mean,g_std))
-    axn.text(0.99, 0.99, "p_value: " + str(g_ttest[1].round(3)) + "\n"
-             + "t-statistic: " + str(g_ttest[0].round(2)),
-             verticalalignment='top', horizontalalignment='right',
-             transform=axn.transAxes)
+        all_o2_offsets_no_nan = g_plot
+        all_o2_offsets_no_nan = all_o2_offsets_no_nan[~np.isnan(all_o2_offsets_no_nan)]
+        hist1, bins = np.histogram(all_o2_offsets_no_nan)
+        axn.hist(g_plot, bins=bins, color='b',alpha=1, label='all' + ' p: ' + str(p_value.round(5)))
+        axn.hist(g_plot_trim, bins=bins,color='r',alpha=0.5, label='trimmed' + ' p: ' + str(p_value_trim.round(5)))
+
+        axn.legend()
+
+        
+    axn.set_title('O2 n: %.1f, %.1f +/- %.1f' % (len(g_plot[~np.isnan(g_plot)]),g_mean,g_std))
+   # axn.text(0.99, 0.99, "p_value: " + str(p_value.round(5)) + "\n"
+   #      + "t-statistic: " + str(t_stat.round(3)),
+   #      verticalalignment='top', horizontalalignment='right',
+   #      transform=axn.transAxes)
     plt.grid()
 
+    # oxygen histogram - trimmed data only:
     axn = plt.subplot(4,5,9)
+    g_plot = g.DOXY_ADJUSTED_offset_trimmed
+    g_mean = np.nanmean(g_plot.values).round(decimals=2)
+    g_std = np.nanstd(g_plot.values).round(decimals=2)
+    if not np.all(np.isnan(g_plot)):
+        axn.hist(g_plot,color='r',alpha=0.5)
+        plt.axvline(CI_99[1], color='k', linestyle='--', label='99% CI')
+        plt.axvline(CI_99[0], color='k', linestyle='--')
+        axn.legend()
+    axn.set_title('O2 trim n: %.1f, %.1f +/- %.1f' % (len(g_plot_trim[~np.isnan(g_plot_trim)]), g_mean,g_std))
+    plt.grid()
+    
+    # Nitrate
+    axn = plt.subplot(4,5,10)
     g_plot = g.NITRATE_ADJUSTED_offset
     g_mean = np.nanmean(g_plot.values).round(decimals=2)
     g_std = np.nanstd(g_plot.values).round(decimals=2)
@@ -178,7 +320,8 @@ for n,g in offsets_g:
     axn.set_title('NO3 %.2f +/- %.2f' % (g_mean,g_std))
     plt.grid()
 
-    axn = plt.subplot(4,5,10)
+    # pH
+    axn = plt.subplot(4,4,9)
     g_plot = g.pH_25C_TOTAL_ADJUSTED_offset
     g_mean = np.nanmean(g_plot.values).round(decimals=2)
     g_std = np.nanstd(g_plot.values).round(decimals=2)
@@ -189,34 +332,44 @@ for n,g in offsets_g:
 
 
     #O2 vs pressure
-    axn = plt.subplot(4,4,9)
+    axn = plt.subplot(4,4,10)
     axn.plot(g.DOXY_ADJUSTED_offset,g.PRES_ADJUSTED_float,'bx')
+    axn.plot(g.DOXY_ADJUSTED_offset_trimmed, g.PRES_ADJUSTED_float,'bo', markerfacecolor="none")
+
     axn.set_title('Float pres vs DOXY offset')
     plt.gca().invert_yaxis()
     axn.set_ylabel('pres')
     plt.grid()
 
-    axn = plt.subplot(4,4,10)
+    axn = plt.subplot(4,4,11)
     axn.plot(g.DOXY_ADJUSTED_offset,g.PRES_ADJUSTED_glodap,'bx')
+    axn.plot(g.DOXY_ADJUSTED_offset_trimmed, g.PRES_ADJUSTED_glodap,'bo', markerfacecolor="none")
+
     axn.set_title('GDAP pres vs DOXY offset')
     plt.gca().invert_yaxis()
     plt.grid()
 
     #vs density
-    axn = plt.subplot(4,4,11)
+    axn = plt.subplot(4,4,12)
     axn.plot(g.DOXY_ADJUSTED_offset,g.PDENS_float,'bx')
+    axn.plot(g.DOXY_ADJUSTED_offset_trimmed, g.PDENS_float,'bo', markerfacecolor="none")
+
     axn.set_title('Float Pdens vs DOXY offset')
     axn.set_ylabel('dens')
     plt.grid()
 
-    axn = plt.subplot(4,4,12)
-    axn.plot(g.DOXY_ADJUSTED_offset,g.PDENS_glodap,'bx')
-    axn.set_title('GDAP Pdens vs DOXY offset')
-    plt.grid()
+    #axn = plt.subplot(4,4,12)
+    #axn.plot(g.DOXY_ADJUSTED_offset,g.PDENS_glodap,'bx')
+    #axn.plot(g.DOXY_ADJUSTED_offset_trimmed, g.PDENS_glodap,'bo', markerfacecolor="none")
+
+    #axn.set_title('GDAP Pdens vs DOXY offset')
+    #plt.grid()
 
     #O2 offset vs o2 concentration
     axn = plt.subplot(4,4,13)
     axn.plot(g.DOXY_ADJUSTED_offset,g.DOXY_ADJUSTED_float,'bx')
+    axn.plot(g.DOXY_ADJUSTED_offset_trimmed, g.DOXY_ADJUSTED_float,'bo', markerfacecolor="none")
+
     axn.set_title('Float O2 vs DOXY offset')
     axn.set_ylabel('O2 concentration')
     plt.grid()
@@ -267,7 +420,7 @@ for n,g in offsets_g:
 
     plt.savefig(offset_dir+ 'individual_floats/' + str(g.main_float_wmo.values[0])+'_v_glodap.png')
     plt.clf()
-  
+
     # wait = input("Press Enter to continue.")
     
 # -

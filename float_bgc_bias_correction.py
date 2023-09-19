@@ -88,7 +88,7 @@ for line in lines:
         matlab_dir=line[index+1:]
 
 #add derived float file directory within argo_path
-argo_path_derived = argo_path+'derived/'
+argo_path_derived = argo_path+'../derived/'
 if not os.path.isdir(argo_path_derived):
     os.mkdir(argo_path_derived)
 # -
@@ -106,15 +106,15 @@ p_interp = np.arange(p_interp_min,p_interp_max+1)
 p_compare_min = 1450
 p_compare_max = 2000
 
+#max density difference to store crossover
+delta_dens = 0.005
+#max spice difference to store crossover
+delta_spice = 0.005
+# max pressure difference to store crossover
+delta_press = 100
+
 #crossover distance range
 dist = 100
-
-#max density difference to store crossover
-delta_dens = 0.001
-#max spice difference to store crossover
-delta_spice = 0.001
-# max pressure difference to store crossover
-delta_press = 50
 
 #variables to do crossovers
 var_list_plot = ['PRES_ADJUSTED','TEMP_ADJUSTED','PSAL_ADJUSTED','DOXY_ADJUSTED','NITRATE_ADJUSTED',
@@ -207,7 +207,7 @@ gdap = gdap.rename(columns={'G2longitude':'LONGITUDE', 'G2latitude':'LATITUDE', 
 # 0: overwrites and runs all floats in the argo_path directory 
 # 1: reads in and adds to argo_interp_temp.nc rather than overwriting and running all floats
 # 2: runs specific floats listed below
-append_data = 2 
+append_data = 0 
 ### 
 if 'argo_interp' in locals():
     argo_interp.close()
@@ -252,17 +252,20 @@ elif append_data==0:
     if 'argo_interp' in locals():
         del argo_interp # deletes argo_interp in case this code is being run multiple times. 
 else:
-    argolist_run = ['4901135_Sprof.nc']
+    argolist_run = ['1901154_Sprof.nc',
+                     '1902332_Sprof.nc',
+                     '2900961_Sprof.nc', 
+                     '4900871_Sprof.nc', 
+                     '4901135_Sprof.nc', 
+                     '5901447_Sprof.nc', 
+                     '5901451_Sprof.nc',
+                     '4901135_Sprof.nc',
+                     '5906312_Sprof.nc']
     if 'argo_interp' in locals():
         del argo_interp # deletes argo_interp in case this code is being run multiple times. 
-   # argolist_run = ['1901154_Sprof.nc',
-     #                '1902332_Sprof.nc',
-     #                '2900961_Sprof.nc', 
-      #               '4900871_Sprof.nc', 
-       #              '4901135_Sprof.nc', 
-        #             '5901447_Sprof.nc', 
-         #            '5901451_Sprof.nc']
-    
+  
+       # argolist_run = ['4901135_Sprof.nc']
+
         
 #####
 #iterate through each float file 
@@ -270,6 +273,10 @@ else:
 #interpolates all variables in "var_list" to 1 m resolution and stores in argo_interp_n
 #saves out individual float netcdf files with variables to be adjusted/used for crossovers
 #appends 1m interpolated dataset in argo_interp for comparison to glodap (not saved currently)
+
+argo_interp_filename = 'argo_interp_temp_' + str(dist) + 'km_' \
+    + str(p_compare_min) + '_to_' + str(p_compare_max) + '_' + str(delta_press) + 'm_' + \
+    str(delta_dens) + 'dens_' + str(delta_spice) + 'spice' + '.nc'
 
 wmo_list= list()
 for n in range(len(argolist_run)):
@@ -582,28 +589,31 @@ for n in range(len(argolist_run)):
                     
     #save out argo_interp periodically:
     if n/20==round(n/20):
-        argo_interp.to_netcdf(data_dir+'argo_interp_temp.nc')
+        argo_interp.to_netcdf(data_dir+argo_interp_filename)
 
-argo_interp.to_netcdf(data_dir+'argo_interp_temp.nc') # need to save one final time so that final floats are not missed
+argo_interp.to_netcdf(data_dir+argo_interp_filename) # need to save one final time so that final floats are not missed
 argo_interp.close() # close dataset to avoid keeping in memory by accident 
 # -
 
 # ## 3. Compare float - GLODAP crossovers
 
-gdap
-
 # +
 if 'argo_wmo' in locals():
        del argo_wmo # deletes argo_interp in case this code is being run multiple times. 
-    
+
+glodap_offsets_filename = 'glodap_offsets_' + str(dist) + 'km_' \
+    + str(p_compare_min) + '_to_' + str(p_compare_max) + '_' + str(delta_press) + 'm_' + \
+    str(delta_dens) + 'dens_' + str(delta_spice) + 'spice' + '.nc'
+
+        
 #toggle to plot offsets profile by profile
-plot_profile = 1
+plot_profile = 0
     
 #restrict glodap data to comparison pressure range
 gdap_p = gdap[(gdap.PRES_ADJUSTED.values>p_compare_min) & (gdap.PRES_ADJUSTED.values<p_compare_max)]
 
 #load saved argo_interp data if needed
-argo_interp = xr.open_dataset(data_dir+'argo_interp_temp.nc')
+argo_interp = xr.open_dataset(data_dir+argo_interp_filename)
 #group by float wmo
 argo_wmo = argo_interp.groupby('wmo')
 
@@ -643,8 +653,8 @@ for wmo, group in argo_wmo:
     lon_max = group.LONGITUDE.values+lon_tol
 
     #find all data in lat-lon limits
-    for n in range(3, 4): #range(nprof): #   #
-        print(group.profile[n].values)
+    for n in range(nprof): #range(3, 4): #   #
+        #print(group.profile[n].values)
 
         #index of all gdap profiles within distance range
         if lon_min[n] < 0 and lon_max[n]>0:
@@ -701,6 +711,7 @@ for wmo, group in argo_wmo:
         for m in range(len(match_inds)):
         
             #if no interpolated density (not deep enough) then move on to next profile
+            # probably should move the float profile check earlier in this cell, no need to run so much extra code 
             if np.all(np.isnan(group.PDENS.values[n,:])) or np.isnan(gdap_match.PDENS.values[m]):
                 #print('no interpolated density in depth range')
                 dens_inds[m]=-1
@@ -926,7 +937,8 @@ for wmo, group in argo_wmo:
                     #cc = gdap_match.G2cruise[off_ind] #current cruise to compare with next 
             
             # map of offsets:
-            ax = plt.subplot(3,3,5,subplot_kw={'projection': ccrs.PlateCarree()})
+         #   ax = plt.subplot(3,3,5,subplot_kw={'projection': ccrs.PlateCarree()})
+            ax = plt.subplot(3,3,5,projection=ccrs.PlateCarree())
 
             #ax = plt.axes(projection=ccrs.PlateCarree())
             ax.coastlines()
@@ -966,8 +978,33 @@ for wmo, group in argo_wmo:
 
 # +
 
-temp_lon
+#convert GLODAP offset lists to xarray and save to netcdf
+glodap_offsets = xr.Dataset(coords={'N_CROSSOVERS':(['N_CROSSOVERS'],np.arange(len(gdap_offsets[0])))})
 
+glodap_offsets['p_compare_min'] = p_compare_min
+glodap_offsets['p_compare_max'] = p_compare_max
+glodap_offsets['delta_dens'] = delta_dens
+glodap_offsets['delta_spice'] = delta_spice
+glodap_offsets['delta_press'] = delta_press
+glodap_offsets['dist'] = dist
+
+for idx, var in enumerate(var_list_plot):
+    glodap_offsets[var+'_offset'] = (['N_CROSSOVERS'], gdap_offsets[idx*3])
+    glodap_offsets[var+'_glodap'] = (['N_CROSSOVERS'],gdap_offsets[idx*3+1])
+    glodap_offsets[var+'_float'] = (['N_CROSSOVERS'],gdap_offsets[idx*3+2])
+    
+glodap_offsets['main_float_wmo'] = (['N_CROSSOVERS'],gdap_offsets[len(var_list_plot)*3])
+glodap_offsets['main_float_profile'] = (['N_CROSSOVERS'], gdap_offsets[len(var_list_plot)*3+1])
+glodap_offsets['main_float_juld'] = (['N_CROSSOVERS'],gdap_offsets[len(var_list_plot)*3+2])
+glodap_offsets['glodap_datetime'] = (['N_CROSSOVERS'],gdap_offsets[len(var_list_plot)*3+3])
+glodap_offsets['main_float_longitude'] = (['N_CROSSOVERS'],gdap_offsets[len(var_list_plot)*3+4])
+glodap_offsets['glodap_longitude'] = (['N_CROSSOVERS'],gdap_offsets[len(var_list_plot)*3+5])
+glodap_offsets['main_float_latitude'] = (['N_CROSSOVERS'],gdap_offsets[len(var_list_plot)*3+6])
+glodap_offsets['glodap_latitude'] = (['N_CROSSOVERS'],gdap_offsets[len(var_list_plot)*3+7])
+
+glodap_offsets.to_netcdf(output_dir+glodap_offsets_filename)
+
+print('Total number of glodap crossovers: ' + str(len(gdap_offsets[len(var_list_plot)*3])))
 # +
 ax = plt.axes(projection=ccrs.PlateCarree())
 ax.coastlines()
@@ -1037,6 +1074,8 @@ glodap_offsets.to_netcdf(output_dir+'glodap_offsets.nc')
 
 print('Total number of glodap crossovers: ' + str(len(gdap_offsets[len(var_list_plot)*3])))
 # -
+
+
 
 # ## 4. Compare float - float crossovers
 
