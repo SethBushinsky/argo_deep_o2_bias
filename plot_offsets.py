@@ -26,6 +26,7 @@ import time
 import gsw
 import scipy.stats as stats
 import matplotlib.dates as mdates
+import statsmodels.api as sm
 
 # +
 glodap_offsets_filename = 'glodap_offsets_100km_1450_to_2000_100m_0.005dens_0.005spice.nc'
@@ -133,6 +134,116 @@ def ESD_Test(input_series, alpha, max_outliers, verboseTF):
 
 # -
 
+def regress_confidence_sokal_rohlf(X, Y, alpha):
+
+    q = 1-alpha
+    # calculate averages
+    X_bar = np.mean(X)
+    Y_bar = np.mean(Y)
+
+    #difference of datapoints from mean
+    x_small = X - X_bar
+    y_small = Y - Y_bar
+
+    # sum of the square differences in x
+    sum_x2 = np.nansum(np.square(x_small))
+
+    # multiple differences from mean to get xy and sum
+    xy = x_small*y_small
+    sum_xy = np.nansum(xy)
+
+    # regression coefficient (slope of the regression)
+    b_yx = sum_xy/sum_x2
+
+    # y intercept 
+    a = Y_bar - b_yx*X_bar
+
+    # predicted Y based on regression
+    Y_hat = b_yx*X + a
+
+    # unexplained sum of squares
+    d2_yx = np.sum(np.square(Y-Y_hat))
+
+    # explained variance:
+    s2_y_hat = np.sum(np.square(Y_hat - Y_bar))/(len(Y)-1)
+
+    # unexplained variance:
+    dof = (len(Y) - 2)
+    s2_yx = d2_yx/dof;
+
+    # total variance:
+    s2_Y = np.sum(np.square(Y - Y_bar))/(len(Y)-1)
+
+    # coefficient of determination (r2)
+    r2 = s2_y_hat/s2_Y
+
+    # standard error of the regression coefficient
+    sb = np.sqrt(s2_yx/sum_x2);
+
+    # regression coefficient (slope) different than zero?
+    t_s = (b_yx - 0)/sb
+
+    t_stat = stats.t.ppf(1-q/2, dof)
+
+    CI_alpha_slope = [b_yx - t_stat*sb, b_yx + t_stat*sb]
+
+    return b_yx, a, r2, CI_alpha_slope, t_stat*sb/2
+
+
+# +
+X = mdates.date2num(g_ox.main_float_juld)
+Y = g_ox.DOXY_ADJUSTED_offset_trimmed.values
+alpha = 0.95
+
+regress_confidence_sokal_rohlf(X,Y,alpha)
+
+
+# -
+
+res = stats.linregress(X, Y)
+res
+
+# +
+X = mdates.date2num(g_ox.main_float_juld)
+Y = g_ox.DOXY_ADJUSTED_offset_trimmed.values
+alpha = 0.95
+
+X = sm.add_constant(X)
+
+model = sm.OLS(Y, X).fit()
+model.params
+
+# Get the regression coefficients and confidence intervals
+params = model.params
+conf_int = model.conf_int(alpha=0.05)  # 95% confidence interval
+
+# Extract coefficients
+intercept, slope = params
+
+# Print coefficients and confidence intervals
+print("Intercept:", intercept)
+print("Slope:", slope)
+print("Confidence Intervals:")
+print(conf_int)
+
+# Create a scatter plot of the data
+plt.scatter(X[:, 1], Y, label='Data Points')
+
+# Plot the regression line
+plt.plot(X[:, 1], intercept + slope * X[:, 1], color='red', label='Regression Line')
+
+# Plot confidence intervals around the regression line
+plt.fill_between(X[:, 1], conf_int.iloc[:, 0], conf_int.iloc[:, 1], color='gray', alpha=0.5, label='95% Confidence Interval')
+
+# Add labels and a legend
+plt.xlabel('X')
+plt.ylabel('Y')
+plt.legend()
+
+# Show the plot
+plt.show()
+# -
+
 # ### 1. Load offsets and look at offset summary plots for each float
 # This step helps to 1) identify patterns in float offsets in particular floats so that we can go back and refine offset criteria and 2) make final decisions about whether a float should be adjusted or not.
 #
@@ -146,6 +257,8 @@ glodap_offsets = xr.load_dataset(output_dir+glodap_offsets_filename)
 # -
 
 # plot histograms of offsets for each main float with all crossovers
+
+glodap_offsets
 
 #group by main float wmo
 offsets_g = glodap_offsets.groupby(glodap_offsets.main_float_wmo)
@@ -214,14 +327,14 @@ for n,g in offsets_g:
     axn.plot(g.glodap_datetime,g.DOXY_ADJUSTED_offset_trimmed,'bo', markerfacecolor="None")
 
     # fit regressions
-    g_ox = g.where(~np.isnan(g.DOXY_ADJUSTED_offset), drop=True)
-    m1, b1 = np.polyfit(mdates.date2num(g_ox.main_float_juld),g_ox.DOXY_ADJUSTED_offset, 1)
+    g_ox = g.where(~np.isnan(g.DOXY_ADJUSTED_offset_trimmed), drop=True)
+    m1, b1 = np.polyfit(mdates.date2num(g_ox.main_float_juld),g_ox.DOXY_ADJUSTED_offset_trimmed, 1)
     t = np.arange(datetime(1980,1,1), datetime(2022,1,1), timedelta(days=1)).astype(datetime)
     tnum = mdates.date2num(t)
     axn.plot(t, m1*tnum+b1, "--", c="r")
     axn.plot(g_ox.main_float_juld, m1*mdates.date2num(g_ox.main_float_juld)+b1, c="r")
 
-    m2, b2 = np.polyfit(mdates.date2num(g_ox.glodap_datetime),g_ox.DOXY_ADJUSTED_offset, 1)
+    m2, b2 = np.polyfit(mdates.date2num(g_ox.glodap_datetime),g_ox.DOXY_ADJUSTED_offset_trimmed, 1)
     t = np.arange(datetime(1980,1,1), datetime(2022,1,1), timedelta(days=1)).astype(datetime)
     tnum = mdates.date2num(t)
     axn.plot(t, m2*tnum+b2, "--", c="b")
@@ -420,10 +533,17 @@ for n,g in offsets_g:
 
     plt.savefig(offset_dir+ 'individual_floats/' + str(g.main_float_wmo.values[0])+'_v_glodap.png')
     plt.clf()
-
+    break
     # wait = input("Press Enter to continue.")
     
 # -
+
+mdates.date2num(g_ox.main_float_juld)
+
+
+p, cov = np.polyfit(mdates.date2num(g_ox.main_float_juld),g_ox.DOXY_ADJUSTED_offset_trimmed, 1, cov=True)
+print(p)
+print(cov)
 
 # ### 2. Combine metadata (calibration, instrument etc) with offsets so offsets can be sorted and plotted using different criteria
 #

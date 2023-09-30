@@ -162,7 +162,7 @@ subplot(2,2,2)
 plot(pH, 'k')
 ylabel('pH')
 yyaxis right
-plot(diff(pH)*100)
+plot(diff(pH)*1000)
 ylabel('\Delta mpH for 1 \mumol/kg O2 respiration')
 xlabel('\mumol O2 respired')
 
@@ -179,7 +179,7 @@ plot(pH_Revelle*1000)
 ylabel('\Delta mpH / \Delta DIC')
 xlabel('\mumol O2 respired')
 
-print(gcf, '-dpng', '-r800',  [plot_dir  'Respiration_experiment.png'])
+print(gcf, '-dpng', '-r800',  [plot_dir  'Respiration_experiment_v2.png'])
 
 %% plots checking pCO2 calculations in derived_3 files
 
