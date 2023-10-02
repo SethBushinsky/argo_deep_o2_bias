@@ -23,36 +23,47 @@ for m=1:length(no3_offset)
 end
 
 %% NO3 and Oxygen on pH at one point
-MeasIDVec = [1, 7, 3, 6];
+MeasIDVec = [1, 7, 6];
+MeasIDVec_ESPER = [1, 2, 6];
 
 Coordinates_all = [-149.968     ,  -52.543     , 1500.        ];
-Measurements_all = [34.50930023,   2.80669999,      4,   300];
+Measurements_all = [34.50930023,   2.80669999,     300];
+
+DesiredVariables = 3;
+
+[Estimates_orig,Uncertainties]=ESPER_Mixed(DesiredVariables,Coordinates_all,Measurements_all,MeasIDVec_ESPER,'Equations', [7 15 16], 'EstDates', 2020);
+
+
+
+
 orig_pH = LIPHR(Coordinates_all, Measurements_all, MeasIDVec, 'OAAdjustTF', 0, 'verboseTF', 0);
-orig_TALK = LIAR(Coordinates_all, Measurements_all, MeasIDVec, 'verboseTF', 0);
+% orig_TALK = LIAR(Coordinates_all, Measurements_all, MeasIDVec, 'verboseTF', 0);
 disp('PH, Alk')
-disp(orig_pH)
-disp(orig_TALK)
-Measurements_all = [34.50930023,   2.80669999,      4,   300-5];
+disp(['LPIHR ' num2str(orig_pH)])
+% disp(orig_TALK)
+Measurements_all = [34.50930023,   2.80669999,      300-5];
 
 disp('Change oxygen by -5')
 pH_O2 = LIPHR(Coordinates_all, Measurements_all, MeasIDVec, 'OAAdjustTF', 0, 'verboseTF', 0);
-disp('pH change')
+[Estimates_o2_change,Uncertainties]=ESPER_Mixed(DesiredVariables,Coordinates_all,Measurements_all,MeasIDVec_ESPER,'Equations', [7 15 16], 'EstDates', 2020);
+
+disp('pH change LIPHR')
 pH_O2 - orig_pH
 
-TA_O2 = LIAR(Coordinates_all, Measurements_all, MeasIDVec, 'verboseTF', 0);
-
-disp('TA change')
-TA_O2 - orig_TALK
-
-Measurements_all = [34.50930023,   2.80669999,      4+5*16/154,   300];
-
-pH_no3 = LIPHR(Coordinates_all, Measurements_all, MeasIDVec, 'OAAdjustTF', 0, 'verboseTF', 0);
-pH_no3 - orig_pH
-
-Measurements_all = [34.50930023,   2.80669999,      4+5*16/154,   300-5];
-
-pH_O2_no3 = LIPHR(Coordinates_all, Measurements_all, MeasIDVec, 'OAAdjustTF', 0, 'verboseTF', 0);
-pH_O2_no3 - orig_pH
+% TA_O2 = LIAR(Coordinates_all, Measurements_all, MeasIDVec, 'verboseTF', 0);
+% 
+% disp('TA change')
+% TA_O2 - orig_TALK
+% 
+% Measurements_all = [34.50930023,   2.80669999,       300];
+% 
+% pH_no3 = LIPHR(Coordinates_all, Measurements_all, MeasIDVec, 'OAAdjustTF', 0, 'verboseTF', 0);
+% pH_no3 - orig_pH
+% 
+% Measurements_all = [34.50930023,   2.80669999,     300-5];
+% 
+% pH_O2_no3 = LIPHR(Coordinates_all, Measurements_all, MeasIDVec, 'OAAdjustTF', 0, 'verboseTF', 0);
+% pH_O2_no3 - orig_pH
 
 %% 
 
