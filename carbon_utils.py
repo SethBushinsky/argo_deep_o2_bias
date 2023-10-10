@@ -43,7 +43,35 @@ def LIPHR_matlab(LIPHR_path,Coordinates,Measurements,MeasIDVec,OAAdjustTF=False,
     eng.addpath(eng.genpath(LIPHR_path))
 
     #call MATLAB function
-    results = eng.LIPHR(Coordinates,Measurements,MeasIDVec,'OAAdjustTF', OAAdjustTF)
+    results = eng.LIPHR(Coordinates,Measurements,MeasIDVec,'OAAdjustTF', OAAdjustTF, 'VerboseTF', VerboseTF)
+    eng.quit()
+
+    results = np.asarray(results)   
+    return results
+
+
+def ESPER_mixed_matlab(LIPHR_path,DesiredVariables,Coordinates,Measurements,MeasIDVec_ESPER,Equations, Dates, VerboseTF):
+#launch MATLAB engine API
+    eng = matlab.engine.start_matlab()
+
+    #convert inputs to MATLAB double
+    Measurements = matlab.double([Measurements])
+    Coordinates = matlab.double([Coordinates])
+    MeasIDVec_ESPER = matlab.double([MeasIDVec_ESPER])
+    Equations = matlab.double([Equations])
+    Dates = matlab.double([Dates])
+    DesiredVariables = matlab.double([DesiredVariables])
+
+    #squeeze
+    Measurements = eng.squeeze(Measurements)
+    Coordinates = eng.squeeze(Coordinates)
+
+    #need to make sure LIAR subfolders added to matlab path
+    eng.addpath(eng.genpath(LIPHR_path))
+
+    #call MATLAB function
+    results = eng.ESPER_Mixed_wrapper_for_python(DesiredVariables,Coordinates,Measurements,MeasIDVec_ESPER,Equations,
+                        Dates, VerboseTF)
     eng.quit()
 
     results = np.asarray(results)   

@@ -133,8 +133,6 @@ for v in flagvars:
     flag = v+'f'
     naninds = gdap[flag]!=2
     gdap[v][naninds] = np.nan
-# -
-
 
 # GLODAP derived variables: density, MLD and pH
 
@@ -145,25 +143,6 @@ gdap['sigma0_calculated'] = carbon_utils.sigma0(gdap.G2salinity.values,gdap.G2te
 gdap['spice'] = carbon_utils.spiciness0(gdap.G2salinity.values,gdap.G2temperature.values,
                                   gdap.G2longitude.values,gdap.G2latitude.values,gdap.G2pressure.values)
 
-# +
-# 2023_04_10 Commenting out, will fully remove later if nothing is broken
-###IS THIS NEEDED? CAN REMOVE?
-#iterate over grouped data to calc MLD
-#need to group by cruise and station first
-#gdap_s = gdap.groupby(['G2cruise','G2station','G2cast'])
-#for n, group in gdap_s:
-#    #need to only do if not all -9999!!!
-#    zmin = np.absolute(group.G2depth-10.).argmin()
-#    zminind = group.G2depth.index[zmin]
-#    mld_sigma = group.G2sigma0[zminind]+0.03 #density threshold value
-    #look only below 10m
-#    mldind = group[zmin:].index[group.G2sigma0[zmin:]>=mld_sigma] #identify MLD 
-#    if len(mldind):
-#        group['MLD_sigma0'] = group.G2depth[mldind[0]]
-        
-#put groups back to original dataframe. pd.join?
-
-# +
 #pH from LIPHR
 # calculate LIPHR pH at Glodap points below 1480 m and above 2020m (V: where does the depth restriction come in?)
 LIPHR_path = liar_dir
@@ -173,10 +152,9 @@ Coordinates = np.stack((gdap.G2longitude.values.flatten(),
                         axis=1)
 Measurements = np.stack((gdap.G2salinity.values.flatten(), 
                          gdap.G2temperature.values.flatten(), 
-                         gdap.G2nitrate.values.flatten(), 
                          gdap.G2oxygen.values.flatten()),
                          axis=1)
-MeasIDVec = [1, 7, 3, 6]
+MeasIDVec = [1, 7, 6]
                                 
 results = carbon_utils.LIPHR_matlab(LIPHR_path,
                                     Coordinates.tolist(),
@@ -191,7 +169,6 @@ gdap['pH_25C_TOTAL_ADJUSTED'] = carbon_utils.co2sys_pH25C(2300.,gdap.pH_in_situ_
                                                          gdap.G2salinity,gdap.G2pressure)
 #set pH to nan where there was no original pH data from GLODAP
 gdap.pH_25C_TOTAL_ADJUSTED[np.isnan(gdap.G2phts25p0)]=np.nan
-# -
 
 #rename GLODAP comparison variables to match argo
 gdap = gdap.rename(columns={'G2longitude':'LONGITUDE', 'G2latitude':'LATITUDE', 'G2pressure':'PRES_ADJUSTED',
@@ -199,6 +176,10 @@ gdap = gdap.rename(columns={'G2longitude':'LONGITUDE', 'G2latitude':'LATITUDE', 
                             'G2oxygen':'DOXY_ADJUSTED','G2nitrate':'NITRATE_ADJUSTED', 'G2tco2':'DIC', 
                             'G2talk':'TALK_LIAR', 'G2MLD':'MLD','G2o2sat':'o2sat', 'G2PTMP':'PTMP', 
                             'pH_in_situ_total':'PH_IN_SITU_TOTAL_ADJUSTED','sigma0_calculated':'PDENS'})
+# -
+
+
+gdap['obs_index']=gdap.reset_index().index
 
 # ## 2. Apply float bias corrections 
 
@@ -208,6 +189,9 @@ gdap = gdap.rename(columns={'G2longitude':'LONGITUDE', 'G2latitude':'LATITUDE', 
 # 1: reads in and adds to argo_interp_temp.nc rather than overwriting and running all floats
 # 2: runs specific floats listed below
 append_data = 0 
+# when making major changes, list version number here
+ver_n = '2' # moving interpolated spice and density calculation to post-PSAL and TEMP interpolation
+
 ### 
 if 'argo_interp' in locals():
     argo_interp.close()
@@ -227,12 +211,15 @@ qc_data_fields = ['TEMP_ADJUSTED', 'PSAL_ADJUSTED', 'DOXY_ADJUSTED', 'NITRATE_AD
 
 bgc_data_fields = ['DOXY_ADJUSTED', 'NITRATE_ADJUSTED', 'PH_IN_SITU_TOTAL_ADJUSTED']
 
+# variables to do interpolation on:
+interpolation_list = ['TEMP_ADJUSTED', 'PSAL_ADJUSTED', 'DOXY_ADJUSTED', 'NITRATE_ADJUSTED', 'PH_IN_SITU_TOTAL_ADJUSTED',
+            'pH_25C_TOTAL_ADJUSTED', 'PRES_ADJUSTED', 'DIC','TALK_LIAR']
 #variables to save to derived file
 derived_list = ['TEMP_ADJUSTED', 'PSAL_ADJUSTED', 'DOXY_ADJUSTED', 'NITRATE_ADJUSTED', 'PH_IN_SITU_TOTAL_ADJUSTED',
             'pH_25C_TOTAL_ADJUSTED', 'PDENS', 'spice', 'PRES_ADJUSTED', 'DIC','TALK_LIAR']
-#variables to do crossover calculation
-var_list = ['TEMP_ADJUSTED', 'PSAL_ADJUSTED', 'DOXY_ADJUSTED', 'NITRATE_ADJUSTED', 'PH_IN_SITU_TOTAL_ADJUSTED',
-            'pH_25C_TOTAL_ADJUSTED', 'PDENS', 'spice', 'PRES_ADJUSTED', 'DIC','TALK_LIAR']
+# #variables to do crossover calculation
+# crossover_list = ['TEMP_ADJUSTED', 'PSAL_ADJUSTED', 'DOXY_ADJUSTED', 'NITRATE_ADJUSTED', 'PH_IN_SITU_TOTAL_ADJUSTED',
+#             'pH_25C_TOTAL_ADJUSTED', 'PDENS', 'spice', 'PRES_ADJUSTED', 'DIC','TALK_LIAR']
 
 #if append data is set to 1, reads in argo_interp_temp.nc which contains prior argo_interp array, 
 #compare wmo numbers between argolist and the wmo numbers in argo_interp, and continues on processing 
@@ -252,15 +239,20 @@ elif append_data==0:
     if 'argo_interp' in locals():
         del argo_interp # deletes argo_interp in case this code is being run multiple times. 
 else:
-    argolist_run = ['1901154_Sprof.nc',
-                     '1902332_Sprof.nc',
-                     '2900961_Sprof.nc', 
-                     '4900871_Sprof.nc', 
-                     '4901135_Sprof.nc', 
-                     '5901447_Sprof.nc', 
-                     '5901451_Sprof.nc',
-                     '4901135_Sprof.nc',
-                     '5906312_Sprof.nc']
+    argolist_run = ['7900566_Sprof.nc',
+                     '7900560_Sprof.nc',
+                     '6904115_Sprof.nc', 
+                     '6903557_Sprof.nc']
+#     argolist_run = ['1900722_Sprof.nc']
+#     argolist_run = ['1901154_Sprof.nc',
+#                      '1902332_Sprof.nc',
+#                      '2900961_Sprof.nc', 
+#                      '4900871_Sprof.nc', 
+#                      '4901135_Sprof.nc', 
+#                      '5901447_Sprof.nc', 
+#                      '5901451_Sprof.nc',
+#                      '4901135_Sprof.nc',
+#                      '5906312_Sprof.nc']
     if 'argo_interp' in locals():
         del argo_interp # deletes argo_interp in case this code is being run multiple times. 
   
@@ -270,13 +262,13 @@ else:
 #####
 #iterate through each float file 
 #calculates derived carbonate parameters (currently TALK, DIC), bias corrected pH and stores all in argo_n
-#interpolates all variables in "var_list" to 1 m resolution and stores in argo_interp_n
+#interpolates all variables in "interpolation_list" to 1 m resolution and stores in argo_interp_n
 #saves out individual float netcdf files with variables to be adjusted/used for crossovers
 #appends 1m interpolated dataset in argo_interp for comparison to glodap (not saved currently)
 
 argo_interp_filename = 'argo_interp_temp_' + str(dist) + 'km_' \
     + str(p_compare_min) + '_to_' + str(p_compare_max) + '_' + str(delta_press) + 'm_' + \
-    str(delta_dens) + 'dens_' + str(delta_spice) + 'spice' + '.nc'
+    str(delta_dens) + 'dens_' + str(delta_spice) + 'spice' + '_' + ver_n + '.nc'
 
 wmo_list= list()
 for n in range(len(argolist_run)):
@@ -338,13 +330,13 @@ for n in range(len(argolist_run)):
     argo_interp_n['LATITUDE']  = (['N_PROF'],argo_n.LATITUDE.data)
     argo_interp_n['LONGITUDE']  = (['N_PROF'],argo_n.LONGITUDE.data)
     argo_interp_n['num_var'] = (['N_PROF'],np.zeros((nprof_n))) # changed from np.empty to np.zeros to avoid filling array with random large numbers
-    for v in var_list:
+    for v in derived_list: # all the variables that will be saved out in the derived and interpolated files
         argo_interp_n[v] = (['N_PROF','N_LEVELS'],np.copy(nan_interp))
 
     #check first if PH_IN_SITU_TOTAL_ADJUSTED exists
     if 'PH_IN_SITU_TOTAL_ADJUSTED' in argo_n.keys() and np.any(~np.isnan(argo_n.PH_IN_SITU_TOTAL_ADJUSTED)):
         
-        print('doing TALK, DIC and pH bias correction for float '+str(wmo_n))
+        print('Calculating TALK, DIC and pH 25C correction for float '+str(wmo_n))
         
         #initialise pH 25c and DIC variables - could do this only if float has pH
         argo_n['TALK_LIAR'] = (['N_PROF','N_LEVELS'],np.empty(argo_n.PRES_ADJUSTED.shape)) #nprof x nlevel
@@ -489,7 +481,10 @@ for n in range(len(argolist_run)):
     for p in range(nprof_n):
         #pressure for profile
         p_prof = argo_n.PRES_ADJUSTED[p,:]
-
+        
+        # For interpolated data, shouldn't calculate pdens and spice and then interpolate - 
+        # should interpolate psal and temp and then calculate spice and pdens
+        # Do both so that you are able to have PDENS and spice in the derived files too (do I need them?)
         argo_n['PDENS'][p,:] = carbon_utils.sigma0(argo_n.PSAL_ADJUSTED[p,:].values,
                                                    argo_n.TEMP_ADJUSTED[p,:].values,
                                                   argo_n.LONGITUDE[p].values,
@@ -510,7 +505,7 @@ for n in range(len(argolist_run)):
         
         #find which crossover variables exist in main float file
         var_list_n = []
-        for vname in var_list:
+        for vname in interpolation_list:
             if (vname in argo_n.keys()) and (np.any(~np.isnan(argo_n[vname]))):
                 var_list_n.append(vname)
                 
@@ -566,9 +561,30 @@ for n in range(len(argolist_run)):
                     #assign interpolated variables to array 
                     argo_interp_n[var][p,:] = var_interp_p
             
-            else: 
-                print('profile data not deep enough to interpolate')
-    
+#             else: 
+                # print('profile data not deep enough to interpolate ' + str(p) + ' ' +  var)
+                #                       str(np.nanmax(p100u[~np.isnan(var100u.values)])))
+                # print('values greater than min ' + str(var100u[p100u>p_interp_min].values))
+
+    # loop through profiles again to calculate PDENS and spice for interpolated dataset
+    for p in range(nprof_n):
+        #pressure for profile
+        p_prof = argo_interp_n.PRES_ADJUSTED[p,:]
+
+        # For interpolated data, shouldn't calculate pdens and spice and then interpolate - 
+        # should interpolate psal and temp and then calculate spice and pdens
+        # Do both so that you are able to have PDENS and spice in the derived files too (do I need them?)
+        argo_interp_n['PDENS'][p,:] = carbon_utils.sigma0(argo_interp_n.PSAL_ADJUSTED[p,:].values,
+                                                   argo_interp_n.TEMP_ADJUSTED[p,:].values,
+                                                  argo_interp_n.LONGITUDE[p].values,
+                                                  argo_interp_n.LATITUDE[p].values,
+                                                  argo_interp_n.PRES_ADJUSTED[p,:].values)
+        argo_interp_n['spice'][p,:] = carbon_utils.spiciness0(argo_interp_n.PSAL_ADJUSTED[p,:].values,
+                                                   argo_interp_n.TEMP_ADJUSTED[p,:].values,
+                                                  argo_interp_n.LONGITUDE[p].values,
+                                                      argo_interp_n.LATITUDE[p].values,
+                                                      argo_interp_n.PRES_ADJUSTED[p,:].values)
+        
     #create new dataset with relevant crossover variables only
     argo_n_derived = xr.Dataset()
     argo_n_derived['wmo'] = wmo_n
@@ -595,6 +611,8 @@ argo_interp.to_netcdf(data_dir+argo_interp_filename) # need to save one final ti
 argo_interp.close() # close dataset to avoid keeping in memory by accident 
 # -
 
+argo_interp_filename
+
 # ## 3. Compare float - GLODAP crossovers
 
 # +
@@ -603,7 +621,7 @@ if 'argo_wmo' in locals():
 
 glodap_offsets_filename = 'glodap_offsets_' + str(dist) + 'km_' \
     + str(p_compare_min) + '_to_' + str(p_compare_max) + '_' + str(delta_press) + 'm_' + \
-    str(delta_dens) + 'dens_' + str(delta_spice) + 'spice' + '.nc'
+    str(delta_dens) + 'dens_' + str(delta_spice) + 'spice' + '_' + ver_n + '.nc'
 
         
 #toggle to plot offsets profile by profile
@@ -619,7 +637,7 @@ argo_wmo = argo_interp.groupby('wmo')
 
 #initiate offset list
 #number of additional rows for saving metadata items
-num_meta_items = 8
+num_meta_items = 11
 gdap_offsets =  [[] for _ in range(3*len(var_list_plot)+num_meta_items)]
 
 #iterate over each float & profile
@@ -631,8 +649,8 @@ for wmo, group in argo_wmo:
     nprof = group.LATITUDE.shape[0]
     
      #check sufficient non-NaN data
-    if np.sum(group.num_var>4)==0: #changed to look at all profiles and to only select floats 
-        # with more than 4 variables present (i.e. more than T, S, Press, Dens)
+    if np.sum(group.num_var>3)==0: #changed to look at all profiles and to only select floats 
+        # with more than 3 variables present (i.e. more than T, S, Press)
         print('No non-NAN bgc adjusted data for: '+str(wmo))
         continue
     
@@ -653,7 +671,7 @@ for wmo, group in argo_wmo:
     lon_max = group.LONGITUDE.values+lon_tol
 
     #find all data in lat-lon limits
-    for n in range(nprof): #range(3, 4): #   #
+    for n in range(nprof): #range(4,5):# range(3, 4): #   #
         #print(group.profile[n].values)
 
         #index of all gdap profiles within distance range
@@ -779,6 +797,10 @@ for wmo, group in argo_wmo:
             gdap_offsets[len(var_list_plot)*3+5].append(gdap_match.LONGITUDE.values[m])
             gdap_offsets[len(var_list_plot)*3+6].append(group.LATITUDE[n].values)
             gdap_offsets[len(var_list_plot)*3+7].append(gdap_match.LATITUDE.values[m])
+            gdap_offsets[len(var_list_plot)*3+8].append(gdap_match.G2cruise.values[m])
+            gdap_offsets[len(var_list_plot)*3+9].append(gdap_match.G2station.values[m])
+            gdap_offsets[len(var_list_plot)*3+10].append(gdap_match.obs_index.values[m])
+
             #can add additional float metadata variable to list here
      
 
@@ -810,6 +832,8 @@ for wmo, group in argo_wmo:
             min_o2 = 300
             max_dens = 0
             min_dens = 300
+            min_pres = 1600
+            max_pres = 1700
             
             axn = plt.subplot(3,3,1)
             #plot float profile and matchups
@@ -839,16 +863,27 @@ for wmo, group in argo_wmo:
                     if np.nanmin(group.DOXY_ADJUSTED[n,dens_inds[m]])<min_o2:
                         min_o2 = np.nanmin(group.DOXY_ADJUSTED[n,dens_inds[m]])
                     
+                    if np.nanmin(gdap_match.DOXY_ADJUSTED.values[m])<min_o2:
+                        min_o2 = np.nanmin(gdap_match.DOXY_ADJUSTED.values[m])
+
+                    if np.nanmax(gdap_match.DOXY_ADJUSTED.values[m])>max_o2:
+                        max_o2 = np.nanmax(gdap_match.DOXY_ADJUSTED.values[m])
+                    
                     if np.nanmax(group.DOXY_ADJUSTED[n,dens_inds[m]])>max_o2:
                         max_o2 = np.nanmax(group.DOXY_ADJUSTED[n,dens_inds[m]])
-                    
-
+                                        
                     if np.nanmin(group.PDENS[n,dens_inds[m]])<min_dens:
                         min_dens = np.nanmin(group.PDENS[n,dens_inds[m]])
                     
                     if np.nanmax(group.PDENS[n,dens_inds[m]])>max_dens:
                         max_dens = np.nanmax(group.PDENS[n,dens_inds[m]])
                         
+                    if np.nanmin(group.PRES_ADJUSTED[n,dens_inds[m]])<min_pres:
+                        min_pres = np.nanmin(group.PRES_ADJUSTED[n,dens_inds[m]])
+                    
+                    if np.nanmax(group.PRES_ADJUSTED[n,dens_inds[m]])>max_pres:
+                        max_pres = np.nanmax(group.PRES_ADJUSTED[n,dens_inds[m]])
+
             plt.gca().invert_yaxis()
             plt.ylim([2000,1200])
             plt.ylabel('pressure')
@@ -878,13 +913,15 @@ for wmo, group in argo_wmo:
                         'm+-',linewidth=0.3)
                     axn.scatter(gdap_match.PDENS.values[m],
                             gdap_match.PRES_ADJUSTED.values[m],s=50,c='b',marker='D')
+            plt.ylim([min_pres- 100, max_pres+100])
+
             plt.gca().invert_yaxis()
-            plt.ylim([2000,1200])
-            plt.xlim([27.5,28.0])
+#             plt.ylim([2000,1200])
+#             plt.xlim([27.5,28.0])
             plt.ylabel('pressure')
             plt.xlabel('PDENS')
-            
-            plt.xlim([min_dens-.05, max_dens+.05])
+
+            plt.xlim([min_dens-.01, max_dens+.01])
 
             
            #DOXY vs PDENS
@@ -959,6 +996,30 @@ for wmo, group in argo_wmo:
             plt.ylim([min_lat - .05, max_lat+.05])
             plt.colorbar(scat, ax=ax)
             #plt.show()
+            
+            # plot concentration vs. offset
+            axn = plt.subplot(3,3,6)
+#             plt.plot(o2_offsets, group.DOXY_ADJUSTED[n,:], 'bx')
+            
+            for m in range(len(match_inds)):
+#                 gdap_offset_ind = gdap_match[var].index[m]
+
+                if ~np.isnan(o2_offsets[m]): # only plot glodap data if there is a non-nan crossover
+                    scat = plt.scatter(o2_offsets[m], group.DOXY_ADJUSTED[n,dens_inds[m]],s=50,
+                                c=group.PRES_ADJUSTED[n,dens_inds[m]], marker='s')
+
+#                     cruise = gdap_match.G2cruise[gdap_offset_ind]
+#                     stat = gdap_match.G2station[gdap_offset_ind]
+                    #plot all glodap data that match these cruise and stations
+#                     axn.plot(gdap.loc[(gdap['G2cruise']==cruise) & (gdap['G2station']==stat),'DOXY_ADJUSTED'].values,
+#                              gdap.loc[(gdap['G2cruise']==cruise) & (gdap['G2station']==stat),'PDENS'].values,
+#                             'm+-',linewidth=0.3)
+#                     axn.scatter(gdap_match.DOXY_ADJUSTED.values[m],
+#                                 gdap_match.PDENS.values[m],s=50,c='b',marker='D')
+    
+            plt.colorbar()
+
+            
             #histogram of offsets
             axn = plt.subplot(3,3,7)
             o2_offsets[o2_offsets==np.inf] = np.nan
@@ -972,6 +1033,8 @@ for wmo, group in argo_wmo:
                 axn.hist(dens_offsets[~np.isnan(o2_offsets)],color='b')
                 plt.xlabel('DENS_OFFSETS')
                 plt.xticks(rotation = 45)
+            plt.tight_layout()
+
             plt.savefig(offset_dir+ 'individual_floats/' + str(wmo) + '/' + str(group.wmo[0].values) + ' profile' + str(int(group.profile[n].values)))
             plt.clf()
 
@@ -1001,6 +1064,9 @@ glodap_offsets['main_float_longitude'] = (['N_CROSSOVERS'],gdap_offsets[len(var_
 glodap_offsets['glodap_longitude'] = (['N_CROSSOVERS'],gdap_offsets[len(var_list_plot)*3+5])
 glodap_offsets['main_float_latitude'] = (['N_CROSSOVERS'],gdap_offsets[len(var_list_plot)*3+6])
 glodap_offsets['glodap_latitude'] = (['N_CROSSOVERS'],gdap_offsets[len(var_list_plot)*3+7])
+glodap_offsets['glodap_cruise'] = (['N_CROSSOVERS'],gdap_offsets[len(var_list_plot)*3+8])
+glodap_offsets['glodap_station'] = (['N_CROSSOVERS'],gdap_offsets[len(var_list_plot)*3+9])
+glodap_offsets['glodap_obs_index'] = (['N_CROSSOVERS'],gdap_offsets[len(var_list_plot)*3+10])
 
 glodap_offsets.to_netcdf(output_dir+glodap_offsets_filename)
 

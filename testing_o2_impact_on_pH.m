@@ -31,8 +31,10 @@ Measurements_all = [34.50930023,   2.80669999,     300];
 
 DesiredVariables = 3;
 
-[Estimates_orig,Uncertainties]=ESPER_Mixed(DesiredVariables,Coordinates_all,Measurements_all,MeasIDVec_ESPER,'Equations', [7 15 16], 'EstDates', 2020);
+[Estimates_orig,Uncertainties]=ESPER_Mixed(DesiredVariables,Coordinates_all,Measurements_all,MeasIDVec_ESPER,'Equations', 7, 'EstDates', 2020, 'VerboseTF', 0);
 
+
+%%
 
 
 
