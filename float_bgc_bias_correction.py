@@ -97,28 +97,32 @@ if not os.path.isdir(argo_path_derived):
 
 # +
 #pressure limits for interpolation
-p_interp_min = 1450 #minimum pressure for float crossover comparison
-p_interp_max = 2000 #maximum pressure for float crossover comparison
+p_interp_min = 1 #minimum pressure for float crossover comparison
+p_interp_max = 50 #maximum pressure for float crossover comparison
 #pressure levels to interpolate to, every 1db
 p_interp = np.arange(p_interp_min,p_interp_max+1)
 
 #pressure limits for crossover comparison
-p_compare_min = 1450
-p_compare_max = 2000
+p_compare_min = 1
+p_compare_max = 50
 
 #max density difference to store crossover
-delta_dens = 0.005
+# delta_dens = 0.005
+delta_dens = 0.1
+
 #max spice difference to store crossover
-delta_spice = 0.005
+# delta_spice = 0.005
+delta_spice = 0.1
+
 # max pressure difference to store crossover
-delta_press = 100
+delta_press = 50
 
 #crossover distance range
 dist = 100
 
 #variables to do crossovers
 var_list_plot = ['PRES_ADJUSTED','TEMP_ADJUSTED','PSAL_ADJUSTED','DOXY_ADJUSTED','NITRATE_ADJUSTED',
-                 'DIC','pH_25C_TOTAL_ADJUSTED','PDENS']
+                 'DIC','pH_25C_TOTAL_ADJUSTED','PH_IN_SITU_TOTAL_ADJUSTED','PDENS']
 # -
 
 # ## 1. Download and process GLODAP data
@@ -176,21 +180,25 @@ gdap = gdap.rename(columns={'G2longitude':'LONGITUDE', 'G2latitude':'LATITUDE', 
                             'G2oxygen':'DOXY_ADJUSTED','G2nitrate':'NITRATE_ADJUSTED', 'G2tco2':'DIC', 
                             'G2talk':'TALK_LIAR', 'G2MLD':'MLD','G2o2sat':'o2sat', 'G2PTMP':'PTMP', 
                             'pH_in_situ_total':'PH_IN_SITU_TOTAL_ADJUSTED','sigma0_calculated':'PDENS'})
-# -
-
 
 gdap['obs_index']=gdap.reset_index().index
+# -
+
 
 # ## 2. Apply float bias corrections 
 
 # +
-
 # 0: overwrites and runs all floats in the argo_path directory 
 # 1: reads in and adds to argo_interp_temp.nc rather than overwriting and running all floats
 # 2: runs specific floats listed below
-append_data = 0 
+append_data = 0
+
 # when making major changes, list version number here
-ver_n = '2' # moving interpolated spice and density calculation to post-PSAL and TEMP interpolation
+ver_n = '5' 
+# v2 - moving interpolated spice and density calculation to post-PSAL and TEMP interpolation
+# v3 - fixed PH_25C calculation for float data, fixed in situ pH comparison (I think)
+# v4 - added back in SI and NO3 to DIC calculation - makes a difference apparently (also changes which points have valid data)
+# v5 - trying to do near-surface comparisons as well 
 
 ### 
 if 'argo_interp' in locals():
@@ -239,11 +247,12 @@ elif append_data==0:
     if 'argo_interp' in locals():
         del argo_interp # deletes argo_interp in case this code is being run multiple times. 
 else:
-    argolist_run = ['7900566_Sprof.nc',
-                     '7900560_Sprof.nc',
-                     '6904115_Sprof.nc', 
-                     '6903557_Sprof.nc']
-#     argolist_run = ['1900722_Sprof.nc']
+    argolist_run = ['1902385_Sprof.nc']
+# argolist_run = ['7900566_Sprof.nc',
+#                      '7900560_Sprof.nc',
+#                      '6904115_Sprof.nc', 
+#                      '6903557_Sprof.nc']
+# #     argolist_run = ['1900722_Sprof.nc']
 #     argolist_run = ['1901154_Sprof.nc',
 #                      '1902332_Sprof.nc',
 #                      '2900961_Sprof.nc', 
@@ -410,7 +419,7 @@ for n in range(len(argolist_run)):
                 temperature=argo_n.TEMP_ADJUSTED, 
                 pressure=argo_n.PRES_ADJUSTED, 
                 salinity=argo_n.PSAL_ADJUSTED, 
-                temperature_out=25.*np.ones(argo_n.PRES_ADJUSTED.shape), #fixed 25C temperature
+                temperature_out=25.,#*np.ones(argo_n.PRES_ADJUSTED.shape), #fixed 25C temperature
                 pressure_out=argo_n.PRES_ADJUSTED,
                 total_silicate=SI,
                 total_phosphate=PO4,
@@ -422,10 +431,17 @@ for n in range(len(argolist_run)):
                 opt_buffers_mode=1,
         )
         
-        argo_n['pH_25C_TOTAL_ADJUSTED'] = (['N_PROF','N_LEVELS'],results['pH'])
+#         argo_n['pH_25C_TOTAL_ADJUSTED'] = (['N_PROF','N_LEVELS'],results['pH_total_out'])
         argo_n['DIC'] = (['N_PROF','N_LEVELS'],results['dic'])  
-
         
+        argo_n['pH_25C_TOTAL_ADJUSTED'] = (['N_PROF','N_LEVELS'],carbon_utils.co2sys_pH25C(argo_n.TALK_LIAR,
+                                                    argo_n.PH_IN_SITU_TOTAL_ADJUSTED,
+                                                    argo_n.TEMP_ADJUSTED,
+                                                    argo_n.PSAL_ADJUSTED,
+                                                    argo_n.PRES_ADJUSTED))
+# #         gdap['pH_25C_TOTAL_ADJUSTED'] = carbon_utils.co2sys_pH25C(2300.,gdap.pH_in_situ_total,gdap.G2temperature,
+#                                                          gdap.G2salinity,gdap.G2pressure)
+      
 #         for p in range(nprof_n):
             
 #             # skip a profile if pH is above 10.  There seem to be pH's above 10 that causing 
@@ -496,8 +512,8 @@ for n in range(len(argolist_run)):
                                                   argo_n.LATITUDE[p].values,
                                                   argo_n.PRES_ADJUSTED[p,:].values)
 
-        #for each profile get pressure values >100db
-        p100 = p_prof[p_prof>100.].values
+        #for each profile get pressure values > p_interp_min db
+        p100 = p_prof[p_prof>p_interp_min].values
             
         #if only 1 value of pressure or if there is not valid profile data down to p-max, continue loop
         if (len(p100) <= 1) or (np.nanmax(p100)<p_interp_min):
@@ -512,7 +528,7 @@ for n in range(len(argolist_run)):
         argo_interp_n['num_var'][p] = len(var_list_n) 
         
         for var in var_list_n:
-            var100 = argo_n[var][p,p_prof>100.]
+            var100 = argo_n[var][p,p_prof>p_interp_min]
 
             #if there are non-unique pressure values, 
             #then grab only unique pressure values and matching data points
@@ -609,13 +625,9 @@ for n in range(len(argolist_run)):
 
 argo_interp.to_netcdf(data_dir+argo_interp_filename) # need to save one final time so that final floats are not missed
 argo_interp.close() # close dataset to avoid keeping in memory by accident 
-# -
 
-argo_interp_filename
+## 3. Compare float - GLODAP crossovers
 
-# ## 3. Compare float - GLODAP crossovers
-
-# +
 if 'argo_wmo' in locals():
        del argo_wmo # deletes argo_interp in case this code is being run multiple times. 
 
@@ -731,7 +743,7 @@ for wmo, group in argo_wmo:
             #if no interpolated density (not deep enough) then move on to next profile
             # probably should move the float profile check earlier in this cell, no need to run so much extra code 
             if np.all(np.isnan(group.PDENS.values[n,:])) or np.isnan(gdap_match.PDENS.values[m]):
-                #print('no interpolated density in depth range')
+#                 print('no interpolated density in depth range')
                 dens_inds[m]=-1
                 continue
                 
@@ -761,7 +773,7 @@ for wmo, group in argo_wmo:
             press_diff = np.absolute(group.PRES_ADJUSTED.values[n,dens_ind]-gdap_match.PRES_ADJUSTED.values[m])
             if press_diff> delta_press:
                 continue
-            #calc offset at the interp profile index for each match for each var to plot 
+            #calc offset at the interp profile index for each match for each var to calculate crossover and or plot 
             #check var is present in both float and glodap
             for idx, var in enumerate(var_list_plot):
                 if var in group.keys():
@@ -781,7 +793,7 @@ for wmo, group in argo_wmo:
                     gdap_offsets[idx*3+1].append(gdap_match[var][gdap_offset_ind])
                     #save absolute float value at crossover
                     gdap_offsets[idx*3+2].append(group[var][n,dens_ind])
-                    
+#                     print(var)
                 #append nan if variable is not there so lists all remain same length?
                 else:
                     gdap_offsets[idx*3].append(np.nan) 
@@ -1039,8 +1051,6 @@ for wmo, group in argo_wmo:
             plt.clf()
 
 
-# +
-
 #convert GLODAP offset lists to xarray and save to netcdf
 glodap_offsets = xr.Dataset(coords={'N_CROSSOVERS':(['N_CROSSOVERS'],np.arange(len(gdap_offsets[0])))})
 
@@ -1071,6 +1081,17 @@ glodap_offsets['glodap_obs_index'] = (['N_CROSSOVERS'],gdap_offsets[len(var_list
 glodap_offsets.to_netcdf(output_dir+glodap_offsets_filename)
 
 print('Total number of glodap crossovers: ' + str(len(gdap_offsets[len(var_list_plot)*3])))
+
+# +
+print(np.nanmean(glodap_offsets['pH_25C_TOTAL_ADJUSTED_glodap']))
+print(np.nanmean(glodap_offsets['pH_25C_TOTAL_ADJUSTED_float']))
+print(np.nanmean(glodap_offsets['pH_25C_TOTAL_ADJUSTED_offset']))
+
+print(np.nanmean(glodap_offsets['PH_IN_SITU_TOTAL_ADJUSTED_glodap']))
+print(np.nanmean(glodap_offsets['PH_IN_SITU_TOTAL_ADJUSTED_float']))
+print(np.nanmean(glodap_offsets['PH_IN_SITU_TOTAL_ADJUSTED_offset']))
+print(var_list_plot)
+
 # +
 ax = plt.axes(projection=ccrs.PlateCarree())
 ax.coastlines()

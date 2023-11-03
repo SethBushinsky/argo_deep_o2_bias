@@ -31,8 +31,8 @@ from scipy import interpolate
 
 
 # +
-glodap_offsets_filename = 'glodap_offsets_100km_1450_to_2000_100m_0.005dens_0.005spice_2.nc'
-
+glodap_offsets_filename = 'glodap_offsets_100km_1450_to_2000_100m_0.005dens_0.005spice_4.nc'
+# glodap_offsets_filename = 'glodap_offsets_100km_2_to_50_50m_0.1dens_0.1spice_5.nc'
 # read in a user-created text file to point to local directories to avoid having to change this every time 
 # we update code
 lines=[]
@@ -62,8 +62,9 @@ data_dir = 'data/'
 offset_dir = output_dir + 'glodap_offset_plots/'
 if not os.path.isdir(offset_dir):
     os.mkdir(offset_dir)
-if not os.path.isdir(offset_dir+'individual_floats/'):
-    os.mkdir(offset_dir+'individual_floats/')
+individual_plot_dir = offset_dir + 'individual_floats' + glodap_offsets_filename[14:-3] + '/'
+if not os.path.isdir(individual_plot_dir):
+    os.mkdir(individual_plot_dir)
 
 
 # +
@@ -222,6 +223,9 @@ offsets_g = glodap_offsets.groupby(glodap_offsets.main_float_wmo)
 # Determine outliers and remove, creating a "DOXY_ADJUSTED_offset_trimmed" variable
 
 # +
+# adding option to filter by time of year as well - for use in surface data
+time_filt = 0
+filt_days = 10
 DOXY_ADJUSTED_offset_trimmed = []
 for n,g in offsets_g:
     
@@ -231,7 +235,12 @@ for n,g in offsets_g:
 
 
     # create temp_o2_offest to set all datapoints to nans that the GESD test says are outliers
-    temp_o2_offset = g.DOXY_ADJUSTED_offset
+    if time_filt==1:
+        within_days = np.logical_or(np.abs(g.main_float_juld.dt.dayofyear - g.glodap_datetime.dt.dayofyear)<=filt_days, 
+                           np.abs(g.main_float_juld.dt.dayofyear - g.glodap_datetime.dt.dayofyear)>(365-filt_days)) 
+        temp_o2_offset = g.DOXY_ADJUSTED_offset.where(within_days)
+    else:
+        temp_o2_offset = g.DOXY_ADJUSTED_offset
     for a in range(0, ESD_test_out[1]):
         temp_o2_offset = temp_o2_offset.where(temp_o2_offset != ESD_test_out[2][a])
         
@@ -249,6 +258,9 @@ print(glodap_offsets)
 
 # then group again by WMO, now with the new variable:
 offsets_g = glodap_offsets.groupby(glodap_offsets.main_float_wmo)
+# -
+
+
 
 # +
 # calculate whether change in ocean oxygen content 
@@ -331,13 +343,6 @@ for n,g in offsets_g:
 
     glodap_drift_possible_list.append(glodap_drift_possible)
     
-# -
-
-g_ox
-
-np.mean(g_ox['DOXY_ADJUSTED_offset_trimmed']).values
-
-glodap_offsets['p_compare_min'].item()
 
 # +
 # Depth dependency of offsets:
@@ -393,14 +398,15 @@ for idx in range(0, len(press_bins)-1):
                                      press_response_all_df['avg_depth']<press_bins[idx+1])
     plt.plot(np.mean(press_response_all_df['o2_offset_minus_mean'][depth_index]),
                  (press_bins[idx+1]-press_bins[idx])/2+press_bins[idx], 'ro')
+    plt.gca().invert_yaxis()
+
+    plt.xlabel('Pressure binned offsets minus mean for each float')
+    plt.ylabel('Pressure')
+    plt.savefig(offset_dir+ 'Offsets_v_pressure.png')
+
 # -
 
 press_response_all_df['avg_depth'][press_response_all_df['wmo']==1901212]
-
-uncert_min = np.nan
-print(uncert_min)
-if np.isnan(uncert_min):
-    print('nan')
 
 # +
 sum_true = 0
@@ -636,10 +642,10 @@ for n,g in offsets_g:
     # pH
     axn = plt.subplot(4,4,9)
     g_plot = g.pH_25C_TOTAL_ADJUSTED_offset
-    g_mean = np.nanmean(g_plot.values).round(decimals=2)
-    g_std = np.nanstd(g_plot.values).round(decimals=2)
+    g_mean = np.nanmean(g_plot.values*1000).round(decimals=2)
+    g_std = np.nanstd(g_plot.values*1000).round(decimals=2)
     if not np.all(np.isnan(g_plot)):
-        axn.hist(g_plot,color='b',alpha=0.5)
+        axn.hist(g_plot*1000,color='b',alpha=0.5)
     axn.set_title('PH 25C %.2f +/- %.2f' % (g_mean,g_std))
     plt.grid()
 
@@ -763,7 +769,7 @@ for n,g in offsets_g:
     cx = fig.add_axes([0.72,0.12,0.02,0.17])
     plt.colorbar(cn,cax=cx,label='DOXY OFFSET')
     plt.tight_layout()
-    plt.savefig(offset_dir+ 'individual_floats/' + str(g.main_float_wmo.values[0])+'_v_glodap_v2.png')
+    plt.savefig(individual_plot_dir + str(g.main_float_wmo.values[0])+'_v_glodap_v2.png')
     plt.clf()
 #     if show_plot is False:
 #         plt.close()
@@ -787,7 +793,7 @@ glodap_offsets_mean
 glodap_offsets_mean = offsets_g.mean(skipna='True')
 
 # add in boolean array of whether drift/real ocean change can explain glodap/float differences
-glodap_offsets_mean['glodap_drift_possible'] = glodap_drift_possible_dataarray
+# glodap_offsets_mean['glodap_drift_possible'] = glodap_drift_possible_dataarray
 # -
 
 # We also need to create broad groupings of calibration information provided in SCIENTIFIC_CALIB_COMMENT to enable easy sorting and plotting
@@ -1027,11 +1033,28 @@ for n,w in enumerate(glodap_offsets_mean.main_float_wmo):
     
     print(str(n) + ' out of ' + str(num_crossovers))
 #save offsets with cal info
-glodap_offsets_mean.to_netcdf(output_dir+glodap_offsets_filename[0:-3]+ 'floatmean_withcalibration.nc')
-    
+glodap_offsets_mean.to_netcdf(output_dir+glodap_offsets_filename[0:-3]+ '_floatmean_withcalibration.nc')
+
+
+# +
+# copying crossovers for floats with both air cal and pH to another directory
+glodap_offsets_p = glodap_offsets_mean.to_dataframe()
+
+parameter_a = 'o2_calib_air_group'
+parameter_b = 'pH_group'
+# offsets_g = glodap_offsets_p.groupby(parameter_a)
+offsets_pH = glodap_offsets_p.groupby([parameter_a, parameter_b])
 # -
 
-glodap_offsets_mean.to_netcdf(output_dir+glodap_offsets_filename[0:-3]+ '_floatmean_withcalibration.nc')
+air_cal_ph = offsets_pH.get_group(('air cal', 'pH'))
+# print(air_cal_ph.index)
+for wmo in air_cal_ph.index:
+    print(wmo)
+    os.system('cp ' + offset_dir+'individual_floats/' + str(wmo) + '_v_glodap_v2.png ' + \
+              offset_dir+'individual_floats/air_cal_w_ph/' + str(wmo) + '_v_glodap_v2.png')  
+
+os.system('cp ' + offset_dir+'individual_floats/' + str(wmo) + '_v_glodap_v2.png ' + \
+              offset_dir+'individual_floats/air_cal_w_ph/' + str(wmo) + '_v_glodap_v2.png')  
 
 
 # +
