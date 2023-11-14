@@ -31,8 +31,8 @@ from scipy import interpolate
 
 
 # +
-glodap_offsets_filename = 'glodap_offsets_100km_1450_to_2000_100m_0.005dens_0.005spice_4.nc'
-# glodap_offsets_filename = 'glodap_offsets_100km_2_to_50_50m_0.1dens_0.1spice_5.nc'
+# glodap_offsets_filename = 'glodap_offsets_100km_1450_to_2000_100m_0.005dens_0.005spice_4.nc'
+glodap_offsets_filename = 'glodap_offsets_100km_1_to_50_50m_0.1dens_0.1spice_5.nc'
 # read in a user-created text file to point to local directories to avoid having to change this every time 
 # we update code
 lines=[]
@@ -224,7 +224,7 @@ offsets_g = glodap_offsets.groupby(glodap_offsets.main_float_wmo)
 
 # +
 # adding option to filter by time of year as well - for use in surface data
-time_filt = 0
+time_filt = 1
 filt_days = 10
 DOXY_ADJUSTED_offset_trimmed = []
 for n,g in offsets_g:
@@ -342,7 +342,7 @@ for n,g in offsets_g:
         glodap_drift_possible = False
 
     glodap_drift_possible_list.append(glodap_drift_possible)
-    
+
 
 # +
 # Depth dependency of offsets:
