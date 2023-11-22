@@ -32,7 +32,7 @@ from scipy import interpolate
 
 # +
 # glodap_offsets_filename = 'glodap_offsets_100km_1450_to_2000_100m_0.005dens_0.005spice_4.nc'
-glodap_offsets_filename = 'glodap_offsets_100km_1_to_50_50m_0.1dens_0.1spice_5.nc'
+glodap_offsets_filename = 'glodap_offsets_100km_1_to_50_50m_0.05dens_0.05spice_6a.nc'
 # read in a user-created text file to point to local directories to avoid having to change this every time 
 # we update code
 lines=[]
@@ -222,6 +222,8 @@ offsets_g = glodap_offsets.groupby(glodap_offsets.main_float_wmo)
 
 # Determine outliers and remove, creating a "DOXY_ADJUSTED_offset_trimmed" variable
 
+offsets_g
+
 # +
 # adding option to filter by time of year as well - for use in surface data
 time_filt = 1
@@ -247,7 +249,7 @@ for n,g in offsets_g:
     # append each temp_o2_offset to the new DOXY_ADJUSTED_offset_trimmed vector
     DOXY_ADJUSTED_offset_trimmed.append(temp_o2_offset.values)
     #print(len(DOXY_ADJUSTED_offset_trimmed))
-
+#     break
 # concatenate all vectors within DOXY_ADJUSTED_offset_trimmed (each represents one WMO)
 result_vector = np.concatenate(DOXY_ADJUSTED_offset_trimmed)
 # convert to Xarray DataArray
@@ -258,10 +260,6 @@ print(glodap_offsets)
 
 # then group again by WMO, now with the new variable:
 offsets_g = glodap_offsets.groupby(glodap_offsets.main_float_wmo)
-# -
-
-
-
 # +
 # calculate whether change in ocean oxygen content 
 # as determined by glodap could be responsible for float-glodap difference
@@ -426,6 +424,8 @@ value
 
 offsets_g
 
+g_ox.dims['N_CROSSOVERS']==0
+
 # +
 # show_plot = False
 #loop through each float
@@ -464,102 +464,103 @@ for n,g in offsets_g:
 
     # fit regressions
     g_ox = g.where(~np.isnan(g.DOXY_ADJUSTED_offset_trimmed), drop=True)
-    m1, b1 = np.polyfit(mdates.date2num(g_ox.main_float_juld),g_ox.DOXY_ADJUSTED_offset_trimmed, 1)
-#     t = np.arange(datetime(1980,1,1), datetime(2022,1,1), timedelta(days=1)).astype(datetime)
-#     tnum = mdates.date2num(t)
-    axn.plot(mdates.date2num(g_ox.main_float_juld), m1*mdates.date2num(g_ox.main_float_juld)+b1, 
-             "-", c="r", label="y = "+ str(m1.round(decimals=4)) +"x + " + str(b1.round(decimals=2)))
-    axn.plot(g_ox.main_float_juld, m1*mdates.date2num(g_ox.main_float_juld)+b1, c="r")
-    
-    g_ox_sorted = g_ox.sortby("glodap_datetime")
-    
-    X_series = pd.Series(mdates.date2num(g_ox_sorted.glodap_datetime))
-    Y_series = pd.Series(g_ox_sorted.DOXY_ADJUSTED_offset_trimmed.values)
-    CI_alpha = 0.95
-    b_yx, a, r2, CI_alpha_slope, ttt, y_err = regress_confidence_sokal_rohlf(X_series, Y_series, CI_alpha)
+    if g_ox.dims['N_CROSSOVERS']!=0:
+        m1, b1 = np.polyfit(mdates.date2num(g_ox.main_float_juld),g_ox.DOXY_ADJUSTED_offset_trimmed, 1)
+    #     t = np.arange(datetime(1980,1,1), datetime(2022,1,1), timedelta(days=1)).astype(datetime)
+    #     tnum = mdates.date2num(t)
+        axn.plot(mdates.date2num(g_ox.main_float_juld), m1*mdates.date2num(g_ox.main_float_juld)+b1, 
+                 "-", c="r", label="y = "+ str(m1.round(decimals=4)) +"x + " + str(b1.round(decimals=2)))
+        axn.plot(g_ox.main_float_juld, m1*mdates.date2num(g_ox.main_float_juld)+b1, c="r")
 
-#     t = np.arange(datetime(1980,1,1), datetime(2022,1,1), timedelta(days=1)).astype(datetime)
-#     tnum = mdates.date2num(t)
-    
-    y_est = a+ X_series*b_yx
-    plt.plot(X_series, y_est, color='blue', label="y = "+ str(b_yx.round(decimals=4)) +"x + " + str(a.round(decimals=2)), linestyle = '-')
-    plt.fill_between(X_series, y_est-y_err, y_est+y_err, color='blue', alpha=0.5, label='Confidence Interval')    
-    
-    # extrapolate regression and CI if needed to intersect float_mid_date
-    # should apply the slope of the 
-    float_mid_date = mdates.date2num(g.main_float_juld.mean()) # mean float date in number
-    if len(X_series)<5: # too short to realistically do a regression
-        uncert_min = -100
-        uncert_max = 100
-    elif np.max(X_series)<float_mid_date:
-        X_extend = X_series.append(pd.Series(float_mid_date))
+        g_ox_sorted = g_ox.sortby("glodap_datetime")
 
-        y_extend = a+ X_extend*b_yx
-        
-        X_series_last_third = X_series.iloc[np.int64(np.round(len(X_series)*1/2)):-1]
-        Y_err_last_third = y_err.iloc[np.int64(np.round(len(X_series)*1/2)):-1]
-        b_err, a_err, _, _, _, _ = regress_confidence_sokal_rohlf(X_series_last_third, Y_err_last_third, CI_alpha)
-        extrap_error = X_extend.iloc[-1]*b_err+a_err
-        y_err_extend = y_err.append(pd.Series(extrap_error))
-        
-#         y_err_extend = y_err.append(pd.Series(y_err.iloc[-1]))
-         
-        plt.plot(X_extend, y_extend, color='blue', linestyle = '--')
-        plt.fill_between(X_extend, y_extend-y_err_extend, y_extend+y_err_extend, color='blue', alpha=0.25)    
-        uncert_min = y_extend.iloc[-1] - y_err_extend.iloc[-1]
-#         print(uncert_min)
-        uncert_max = y_extend.iloc[-1] + y_err_extend.iloc[-1]
-#         print(uncert_max)
-    elif np.min(X_series)>float_mid_date:
-        X_extend = pd.Series(float_mid_date).append(X_series)
-        y_extend = a+ X_extend*b_yx
-        X_series_first_half = X_series.iloc[0:np.int64(np.round(len(X_series)*1/2))]
-        Y_err_first_half = y_err.iloc[1:np.int64(np.round(len(X_series)*1/2))]
-        b_err, a_err, _, _, _, _ = regress_confidence_sokal_rohlf(X_series_last_third, Y_err_last_third, CI_alpha)
-        extrap_error = X_extend.iloc[0]*b_err+a_err
-        y_err_extend = pd.Series(extrap_error).append(y_err)
-        
-        plt.plot(X_extend, y_extend, color='blue', linestyle = '--')
-        plt.fill_between(X_extend, y_extend-y_err_extend, y_extend+y_err_extend, color='blue', alpha=0.25)    
-        uncert_min = y_extend.iloc[0] - y_err_extend.iloc[0]
-        uncert_max = y_extend.iloc[0] + y_err_extend.iloc[0]
-    else:
-        y_float = float_mid_date*b_yx+a
-        f = interpolate.interp1d(X_series,y_err)
-        y_float_err = f(float_mid_date)
+        X_series = pd.Series(mdates.date2num(g_ox_sorted.glodap_datetime))
+        Y_series = pd.Series(g_ox_sorted.DOXY_ADJUSTED_offset_trimmed.values)
+        CI_alpha = 0.95
+        b_yx, a, r2, CI_alpha_slope, ttt, y_err = regress_confidence_sokal_rohlf(X_series, Y_series, CI_alpha)
 
-        uncert_min = y_float - y_float_err
-        uncert_max = y_float + y_float_err
-#         print(uncert_min)
-#         print(uncert_max)
+    #     t = np.arange(datetime(1980,1,1), datetime(2022,1,1), timedelta(days=1)).astype(datetime)
+    #     tnum = mdates.date2num(t)
 
-        
-    if np.logical_and(uncert_min<0, uncert_max>0):
-        glodap_drift_possible = True
-    else:
-        glodap_drift_possible = False
+        y_est = a+ X_series*b_yx
+        plt.plot(X_series, y_est, color='blue', label="y = "+ str(b_yx.round(decimals=4)) +"x + " + str(a.round(decimals=2)), linestyle = '-')
+        plt.fill_between(X_series, y_est-y_err, y_est+y_err, color='blue', alpha=0.5, label='Confidence Interval')    
 
-    glodap_drift_possible_list.append(glodap_drift_possible)
-#     print(glodap_drift_possible)
-#     m2, b2 = np.polyfit(mdates.date2num(g_ox.glodap_datetime),g_ox.DOXY_ADJUSTED_offset_trimmed, 1)
-    
-#     axn.plot(t, m2*tnum+b2, "--", c="b")
-#     axn.plot(X_series, m2*mdates.date2num(g_ox.glodap_datetime)+b2, c="b")
+        # extrapolate regression and CI if needed to intersect float_mid_date
+        # should apply the slope of the 
+        float_mid_date = mdates.date2num(g.main_float_juld.mean()) # mean float date in number
+        if len(X_series)<5: # too short to realistically do a regression
+            uncert_min = -100
+            uncert_max = 100
+        elif np.max(X_series)<float_mid_date:
+            X_extend = X_series.append(pd.Series(float_mid_date))
 
-    axn.axhline(y=0, color='k', linestyle='--')
-    axn.legend()
-    joined_dates = mdates.date2num(sorted(np.append(g.glodap_datetime.values, g.main_float_juld.values)))
-    axn.set_xlim(mdates.num2date(joined_dates[0] - 365), mdates.num2date(joined_dates[-1] + 365))
-    try:
-        axn.set_ylim(min(g.DOXY_ADJUSTED_offset.values)  - 5,  max(g.DOXY_ADJUSTED_offset.values) + 5)
-    except ValueError:
-        pass
+            y_extend = a+ X_extend*b_yx
 
-    axn.set_title('O2 Offsets vs date, Real ocean O2 change? ' + str(glodap_drift_possible))
-#     axn.text(0.01, 0.01, "y = "+ str(m1.round(decimals=4)) +"x + " + str(b1.round(decimals=2)) + "\n"
-#              "y = "+ str(m2.round(decimals=4)) +"x + " + str(b2.round(decimals=2)),
-#              verticalalignment='bottom', horizontalalignment='left',
-#              transform=axn.transAxes)
+            X_series_last_third = X_series.iloc[np.int64(np.round(len(X_series)*1/2)):-1]
+            Y_err_last_third = y_err.iloc[np.int64(np.round(len(X_series)*1/2)):-1]
+            b_err, a_err, _, _, _, _ = regress_confidence_sokal_rohlf(X_series_last_third, Y_err_last_third, CI_alpha)
+            extrap_error = X_extend.iloc[-1]*b_err+a_err
+            y_err_extend = y_err.append(pd.Series(extrap_error))
+
+    #         y_err_extend = y_err.append(pd.Series(y_err.iloc[-1]))
+
+            plt.plot(X_extend, y_extend, color='blue', linestyle = '--')
+            plt.fill_between(X_extend, y_extend-y_err_extend, y_extend+y_err_extend, color='blue', alpha=0.25)    
+            uncert_min = y_extend.iloc[-1] - y_err_extend.iloc[-1]
+    #         print(uncert_min)
+            uncert_max = y_extend.iloc[-1] + y_err_extend.iloc[-1]
+    #         print(uncert_max)
+        elif np.min(X_series)>float_mid_date:
+            X_extend = pd.Series(float_mid_date).append(X_series)
+            y_extend = a+ X_extend*b_yx
+            X_series_first_half = X_series.iloc[0:np.int64(np.round(len(X_series)*1/2))]
+            Y_err_first_half = y_err.iloc[1:np.int64(np.round(len(X_series)*1/2))]
+            b_err, a_err, _, _, _, _ = regress_confidence_sokal_rohlf(X_series_last_third, Y_err_last_third, CI_alpha)
+            extrap_error = X_extend.iloc[0]*b_err+a_err
+            y_err_extend = pd.Series(extrap_error).append(y_err)
+
+            plt.plot(X_extend, y_extend, color='blue', linestyle = '--')
+            plt.fill_between(X_extend, y_extend-y_err_extend, y_extend+y_err_extend, color='blue', alpha=0.25)    
+            uncert_min = y_extend.iloc[0] - y_err_extend.iloc[0]
+            uncert_max = y_extend.iloc[0] + y_err_extend.iloc[0]
+        else:
+            y_float = float_mid_date*b_yx+a
+            f = interpolate.interp1d(X_series,y_err)
+            y_float_err = f(float_mid_date)
+
+            uncert_min = y_float - y_float_err
+            uncert_max = y_float + y_float_err
+    #         print(uncert_min)
+    #         print(uncert_max)
+
+
+        if np.logical_and(uncert_min<0, uncert_max>0):
+            glodap_drift_possible = True
+        else:
+            glodap_drift_possible = False
+
+        glodap_drift_possible_list.append(glodap_drift_possible)
+    #     print(glodap_drift_possible)
+    #     m2, b2 = np.polyfit(mdates.date2num(g_ox.glodap_datetime),g_ox.DOXY_ADJUSTED_offset_trimmed, 1)
+
+    #     axn.plot(t, m2*tnum+b2, "--", c="b")
+    #     axn.plot(X_series, m2*mdates.date2num(g_ox.glodap_datetime)+b2, c="b")
+
+        axn.axhline(y=0, color='k', linestyle='--')
+        axn.legend()
+        joined_dates = mdates.date2num(sorted(np.append(g.glodap_datetime.values, g.main_float_juld.values)))
+        axn.set_xlim(mdates.num2date(joined_dates[0] - 365), mdates.num2date(joined_dates[-1] + 365))
+        try:
+            axn.set_ylim(min(g.DOXY_ADJUSTED_offset.values)  - 5,  max(g.DOXY_ADJUSTED_offset.values) + 5)
+        except ValueError:
+            pass
+
+        axn.set_title('O2 Offsets vs date, Real ocean O2 change? ' + str(glodap_drift_possible))
+    #     axn.text(0.01, 0.01, "y = "+ str(m1.round(decimals=4)) +"x + " + str(b1.round(decimals=2)) + "\n"
+    #              "y = "+ str(m2.round(decimals=4)) +"x + " + str(b2.round(decimals=2)),
+    #              verticalalignment='bottom', horizontalalignment='left',
+    #              transform=axn.transAxes)
 
     # plot offset histograms
     # Temperature
@@ -771,6 +772,7 @@ for n,g in offsets_g:
     plt.tight_layout()
     plt.savefig(individual_plot_dir + str(g.main_float_wmo.values[0])+'_v_glodap_v2.png')
     plt.clf()
+#     break
 #     if show_plot is False:
 #         plt.close()
     # wait = input("Press Enter to continue.")

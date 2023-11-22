@@ -108,11 +108,11 @@ p_compare_max = 50
 
 #max density difference to store crossover
 # delta_dens = 0.005
-delta_dens = 0.1
+delta_dens = 0.05
 
 #max spice difference to store crossover
 # delta_spice = 0.005
-delta_spice = 0.1
+delta_spice = 0.05
 
 # max pressure difference to store crossover
 delta_press = 50
@@ -191,14 +191,15 @@ gdap['obs_index']=gdap.reset_index().index
 # 0: overwrites and runs all floats in the argo_path directory 
 # 1: reads in and adds to argo_interp_temp.nc rather than overwriting and running all floats
 # 2: runs specific floats listed below
-append_data = 0
+append_data = 2
 
 # when making major changes, list version number here
-ver_n = '5' 
+ver_n = '6a' 
 # v2 - moving interpolated spice and density calculation to post-PSAL and TEMP interpolation
 # v3 - fixed PH_25C calculation for float data, fixed in situ pH comparison (I think)
 # v4 - added back in SI and NO3 to DIC calculation - makes a difference apparently (also changes which points have valid data)
 # v5 - trying to do near-surface comparisons as well 
+# v6 - working on full depth comparison that I will then separate by depth 
 
 ### 
 if 'argo_interp' in locals():
@@ -247,7 +248,7 @@ elif append_data==0:
     if 'argo_interp' in locals():
         del argo_interp # deletes argo_interp in case this code is being run multiple times. 
 else:
-    argolist_run = ['1902385_Sprof.nc']
+#     argolist_run = ['1902385_Sprof.nc']
 # argolist_run = ['7900566_Sprof.nc',
 #                      '7900560_Sprof.nc',
 #                      '6904115_Sprof.nc', 
@@ -262,6 +263,20 @@ else:
 #                      '5901451_Sprof.nc',
 #                      '4901135_Sprof.nc',
 #                      '5906312_Sprof.nc']
+    argolist_run = ['5906547_Sprof.nc',
+                     '5906548_Sprof.nc',
+                     '5906549_Sprof.nc', 
+                     '5906550_Sprof.nc', 
+                     '5906551_Sprof.nc', 
+                     '5906552_Sprof.nc', 
+                     '5906553_Sprof.nc',
+                     '5906562_Sprof.nc',
+                     '5906554_Sprof.nc',
+                     '5906561_Sprof.nc', 
+                     '5906556_Sprof.nc',
+                     '5906558_Sprof.nc',
+                     '5906559_Sprof.nc',
+                     '5906557_Sprof.nc']
     if 'argo_interp' in locals():
         del argo_interp # deletes argo_interp in case this code is being run multiple times. 
   
@@ -1161,9 +1176,6 @@ glodap_offsets.to_netcdf(output_dir+'glodap_offsets.nc')
 
 print('Total number of glodap crossovers: ' + str(len(gdap_offsets[len(var_list_plot)*3])))
 # -
-
-
-
 # ## 4. Compare float - float crossovers
 
 # +
