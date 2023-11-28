@@ -46,6 +46,7 @@ import gsw
 import float_data_processing as fl
 import carbon_utils
 import re
+import time
 
 # Create data directories
 
@@ -97,25 +98,25 @@ if not os.path.isdir(argo_path_derived):
 
 # +
 #pressure limits for interpolation
-p_interp_min = 1 #minimum pressure for float crossover comparison
-p_interp_max = 50 #maximum pressure for float crossover comparison
+p_interp_min = 1450 #minimum pressure for float crossover comparison
+p_interp_max = 2000 #maximum pressure for float crossover comparison
 #pressure levels to interpolate to, every 1db
 p_interp = np.arange(p_interp_min,p_interp_max+1)
 
 #pressure limits for crossover comparison
-p_compare_min = 1
-p_compare_max = 50
+p_compare_min = 1400
+p_compare_max = 2100
 
 #max density difference to store crossover
-# delta_dens = 0.005
-delta_dens = 0.05
+delta_dens = 0.005
+# delta_dens = 0.05
 
 #max spice difference to store crossover
-# delta_spice = 0.005
-delta_spice = 0.05
+delta_spice = 0.005
+# delta_spice = 0.05
 
 # max pressure difference to store crossover
-delta_press = 50
+delta_press = 100
 
 #crossover distance range
 dist = 100
@@ -188,10 +189,12 @@ gdap['obs_index']=gdap.reset_index().index
 # ## 2. Apply float bias corrections 
 
 # +
+start_time = time.perf_counter()
+
 # 0: overwrites and runs all floats in the argo_path directory 
 # 1: reads in and adds to argo_interp_temp.nc rather than overwriting and running all floats
 # 2: runs specific floats listed below
-append_data = 2
+append_data = 0
 
 # when making major changes, list version number here
 ver_n = '6a' 
@@ -1096,6 +1099,9 @@ glodap_offsets['glodap_obs_index'] = (['N_CROSSOVERS'],gdap_offsets[len(var_list
 glodap_offsets.to_netcdf(output_dir+glodap_offsets_filename)
 
 print('Total number of glodap crossovers: ' + str(len(gdap_offsets[len(var_list_plot)*3])))
+finish_time = time.perf_counter()
+print("Program finished in {} seconds".format(finish_time - start_time))
+print("---")
 
 # +
 print(np.nanmean(glodap_offsets['pH_25C_TOTAL_ADJUSTED_glodap']))
