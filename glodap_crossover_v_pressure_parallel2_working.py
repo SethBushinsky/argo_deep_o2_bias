@@ -1,7 +1,8 @@
 from multiprocessing import Process
 import pressure_level_glodap_mean as pl
 import xarray as xr
-import glob, os
+import os
+from datetime import datetime
 
 # read in a user-created text file to point to local directories to avoid having to change this every time 
 # we update code
@@ -32,23 +33,25 @@ data_dir = 'data/'
 offset_dir = output_dir + 'glodap_offset_plots/'
 if not os.path.isdir(offset_dir):
     os.mkdir(offset_dir)
-grouped_plot_dir = offset_dir + 'grouped_plots/temp/'
+
+todays_date = datetime.today().strftime('%Y_%m_%d')
+
+grouped_plot_dir = offset_dir + 'grouped_plots/' + todays_date + '/'
 # grouped_plot_dir = offset_dir + 'grouped_plots/levels_mean_saved/'
 
 if not os.path.isdir(grouped_plot_dir):
     os.mkdir(grouped_plot_dir)
 
 
-
 def main():
     # loop through various glodap_offset plots, calculating trimmed mean for different pressure levels and storing for comparison
     glodap_offsets = []
-    glodap_offsets_filenames = ['glodap_offsets_100km_1_to_550_50m_0.05dens_0.05spice_6.nc', 'glodap_offsets_100km_400_to_2100_100m_0.005dens_0.005spice_6.nc']
-
+    # glodap_offsets_filenames = ['glodap_offsets_100km_1_to_550_50m_0.05dens_0.05spice_6.nc', 'glodap_offsets_100km_400_to_2100_100m_0.005dens_0.005spice_6.nc']
+    glodap_offsets_filenames = ['glodap_offsets_100km_1400_to_2100_100m_0.005dens_0.005_spice_7.nc']
     for filename in glodap_offsets_filenames:
         ds = xr.load_dataset(output_dir+filename)
         glodap_offsets.append(ds)
-    pressure_levels = [0, 100, 200]  # Adjust as needed
+    pressure_levels = [1500, 2000]  # Adjust as needed
 
     # pressure_levels = [0, 100, 200, 300, 400, 500, 750, 1000, 1250, 1500, 2000]  # Adjust as needed
     # pressure_levels = [0, 100, 200]#, 300]#, 400, 500, 750, 1000, 1250, 1500, 2000]  # Adjust as needed

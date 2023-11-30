@@ -2,6 +2,7 @@ import xarray as xr
 import pandas as pd
 import outlier_filter_ESD_test as outlier
 import numpy as np
+import time
 
 #list of DOXY_ADJUSTED SCIENTIFIC_CALIB_COMMENT substrings to group together for bias analysis
 
@@ -46,8 +47,10 @@ noair_cal_withdrift_list = []
 
 noair_cal_combined_list = noair_cal_surf_list+noair_cal_subsurf_list+noair_cal_funcofdoxy_list+noair_cal_unspec_list
 
-def pressure_level_filter(argo_path, output_dir, out_filename, gdap_offsets_n_temp, var_list_plot, year_filt, pressure_level_min, pressure_level_max, \
-                          year_plus_minus):
+def pressure_level_filter(argo_path, output_dir, out_filename, gdap_offsets_n_temp, var_list_plot, year_filt, 
+                          pressure_level_min, pressure_level_max, 
+                          year_plus_minus, time_delay, float_age_bins):
+    time.sleep(time_delay) 
     # set all data not at that pressure level to nan                  
     for var in var_list_plot:
         pressure_index = np.logical_and(gdap_offsets_n_temp['PRES_ADJUSTED_float']>pressure_level_min, 
@@ -77,36 +80,89 @@ def pressure_level_filter(argo_path, output_dir, out_filename, gdap_offsets_n_te
         time_filt=0
 
 
-    DOXY_ADJUSTED_offset_trimmed = []
+    # DOXY_ADJUSTED_offset_trimmed = []
+    # DOXY_ADJUSTED_offset_trimmed = []
+    # Create an empty data variable for DOXY offset trimmed with the same dimensions as N_CROSSOVERS
+    empty_data = np.empty(len(gdap_offsets_n_temp['N_CROSSOVERS']))
+    empty_data[:] = np.nan
+
+
+    # Create a new xarray DataArray with the empty data and the same coordinates
+    new_data_array = xr.DataArray(empty_data, coords={'N_CROSSOVERS': gdap_offsets_n_temp['N_CROSSOVERS']}, dims=['N_CROSSOVERS'])
+    gdap_offsets_n_temp['DOXY_ADJUSTED_offset_trimmed'] = new_data_array
+
     for n,g in offsets_g:
 
         # run a GESD test using "test_num" number of possible outliers
-        test_num = int((len(g.DOXY_ADJUSTED_offset.dropna(dim="N_CROSSOVERS", how="any").values)*.1))
+        test_num = int((len(g.DOXY_ADJUSTED_offset.dropna(dim="N_CROSSOVERS", how="any").values)*.1)) # allowing for ~10 % to be outliers
         ESD_test_out = outlier.ESD_Test(g.DOXY_ADJUSTED_offset.dropna(dim="N_CROSSOVERS", how="any").values, 0.05, test_num, False, True)
 
-        # create temp_o2_offest to set all datapoints to nans that the GESD test says are outliers
+        # only trim the data if deep, otherwise apply a day of year test but no other filtering 
         if time_filt==1:
             within_days = np.logical_or(np.abs(g.main_float_juld.dt.dayofyear - g.glodap_datetime.dt.dayofyear)<=filt_days, 
                             np.abs(g.main_float_juld.dt.dayofyear - g.glodap_datetime.dt.dayofyear)>(365-filt_days)) 
             temp_o2_offset = g.DOXY_ADJUSTED_offset.where(within_days)
-        else:
+        else:         # create temp_o2_offest to set all datapoints to nans that the GESD test says are outliers
+
             temp_o2_offset = g.DOXY_ADJUSTED_offset
-        for a in range(0, ESD_test_out[1]):
-            temp_o2_offset = temp_o2_offset.where(temp_o2_offset != ESD_test_out[2][a])
-            
+            for a in range(0, ESD_test_out[1]):
+                temp_o2_offset = temp_o2_offset.where(temp_o2_offset != ESD_test_out[2][a])
+
+        # replace nan values with values of temp_o2_offset
+        gdap_offsets_n_temp['DOXY_ADJUSTED_offset_trimmed'][gdap_offsets_n_temp['main_float_wmo']==[n]] = temp_o2_offset
+
         # append each temp_o2_offset to the new DOXY_ADJUSTED_offset_trimmed vector
-        DOXY_ADJUSTED_offset_trimmed.append(temp_o2_offset.values)
+        # DOXY_ADJUSTED_offset_trimmed.append(temp_o2_offset.values)
         #print(len(DOXY_ADJUSTED_offset_trimmed))
         # break
 
     # concatenate all vectors within DOXY_ADJUSTED_offset_trimmed (each represents one WMO)
-    result_vector = np.concatenate(DOXY_ADJUSTED_offset_trimmed)
-    # convert to Xarray DataArray
-    result_da = xr.DataArray(result_vector, dims='N_CROSSOVERS', coords={'N_CROSSOVERS': gdap_offsets_n_temp['N_CROSSOVERS']})
-    # add to glodap_offsets
-    gdap_offsets_n_temp['DOXY_ADJUSTED_offset_trimmed']=result_da
+    # result_vector = np.concatenate(DOXY_ADJUSTED_offset_trimmed)
+    # # convert to Xarray DataArray
+    # result_da = xr.DataArray(result_vector, dims='N_CROSSOVERS', coords={'N_CROSSOVERS': gdap_offsets_n_temp['N_CROSSOVERS']})
+    # # add to glodap_offsets
+    # gdap_offsets_n_temp['DOXY_ADJUSTED_offset_trimmed']=result_da
     # print(glodap_offsets)
 
+    # calculate mean DOXY_ADJUSTED_offsets for different day ranges
+    if len(float_age_bins)>0: # 0 = skip and do not apply
+        print('in age section')
+        # create new variables that will be the mean offsets for different time ranges
+        empty_data = np.empty(len(gdap_offsets_n_temp['N_CROSSOVERS']))
+        empty_data[:] = np.nan
+        for fa in range(len(float_age_bins)-1):
+            new_data_array = xr.DataArray(empty_data, coords={'N_CROSSOVERS': gdap_offsets_n_temp['N_CROSSOVERS']}, dims=['N_CROSSOVERS'])
+            gdap_offsets_n_temp['DOXY_ADJUSTED_offset_' + 'age_' + str(float_age_bins[fa])] = new_data_array.copy()
+            
+        wmo_list = np.unique(gdap_offsets_n_temp.main_float_wmo)
+        # loop through all floats
+        for wmo_n in wmo_list:
+            # load Sprof file, get date of first profile
+            argo_n = xr.open_dataset(argo_path + str(wmo_n) + '_Sprof.nc')
+            first_profile_date = argo_n.JULD[0].values
+
+            # calculate offset time relative to first deployment
+            time_since_first_ns = gdap_offsets_n_temp.main_float_juld[gdap_offsets_n_temp.main_float_wmo==wmo_n].values-first_profile_date
+            time_since_first_days = time_since_first_ns / np.timedelta64(1, 'D')
+
+            # save out o2 offsets for this float
+            temp_o2_offset = gdap_offsets_n_temp.DOXY_ADJUSTED_offset[gdap_offsets_n_temp.main_float_wmo==wmo_n]
+
+
+            # now loop through float_age_bins to calculate mean offsets for each age range 
+            for fa in range(len(float_age_bins)-1):
+                # find ages within range
+                age_index = np.logical_and(time_since_first_days>=float_age_bins[fa], time_since_first_days<float_age_bins[fa+1])
+
+                # save the mean o2 offset where age_index is true to the correct age variable for that float
+                gdap_offsets_n_temp['DOXY_ADJUSTED_offset_' + 'age_' + str(float_age_bins[fa])]\
+                    [gdap_offsets_n_temp.main_float_wmo==wmo_n] = np.nanmean(temp_o2_offset.where(age_index).values)
+
+
+    # save a copy of gdap_offsets_n_temp for later plotting / analysis:
+    gdap_offsets_n_temp.to_netcdf(output_dir+out_filename+ '_all_offsets_depth_grouped_' + \
+                                   'year_filt_' + str(year_filt) +'_' + str(year_plus_minus) + '_level_' + str(pressure_level_min) + '.nc')
+    
     # then group again by WMO, now with the new variable:
     offsets_g = gdap_offsets_n_temp.groupby(gdap_offsets_n_temp.main_float_wmo)
 
@@ -300,5 +356,5 @@ def pressure_level_filter(argo_path, output_dir, out_filename, gdap_offsets_n_te
         print(str(n) + ' out of ' + str(num_crossovers))
         # break
     glodap_offsets_mean.to_netcdf(output_dir+out_filename+ '_floatmean_withcalibration_depth_grouped_' + \
-                                   'year_filt_ ' + str(year_filt) +'_' + str(year_plus_minus) + '_level_' + str(pressure_level_min) + '.nc')
+                                   'year_filt_' + str(year_filt) +'_' + str(year_plus_minus) + '_level_' + str(pressure_level_min) + '.nc')
     # trimmed_means[f'level_{pressure_level_min}'] = glodap_offsets_mean

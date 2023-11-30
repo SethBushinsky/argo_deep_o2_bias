@@ -294,7 +294,11 @@ def glodap_crossover_offsets(argo_path_interpolated, offset_dir, glodap_file_off
     wmo = argo_file[0:7]
     print('Starting crossover for '+ wmo)
 
-    argo_interp_n = xr.open_dataset(argo_path_interpolated + wmo + '_interpolated.nc')
+    try:
+        argo_interp_n = xr.open_dataset(argo_path_interpolated + wmo + '_interpolated.nc')
+    except:
+        print('File ' + wmo + '_interpolated.nc' + ' not found:')
+        return
     #number of profiles
     nprof = argo_interp_n.LATITUDE.shape[0]
 

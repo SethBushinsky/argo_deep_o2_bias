@@ -2,25 +2,29 @@ import matplotlib.pyplot as plt
 import xarray as xr
 import matplotlib.dates as mdates
 import numpy as np
+import sokal_rohlf_calculations as SR
+import pandas as pd
+from scipy import interpolate
+import scipy.stats as stats
+import gsw
 
 
+# will want to pass individual float files for plotting, so that they can be distributed to parallel cores
+def plot_glodap_crossovers(individual_plot_dir, glodap_offsets, g):
+        print('Plotting crossover for: ' + str(g.main_float_wmo.values[0]))
+        # show_plot = False
+        #loop through each float
+        fig = plt.figure(figsize=(16,16))
 
+        # create a list to put in True / False if the glodap offsets intersect zero at float mid date
+        glodap_drift_possible_list = []
 
-def plot_glodap_crossovers(glodap_offsets, offsets_g):
-    # show_plot = False
-    #loop through each float
-    fig = plt.figure(figsize=(16,16))
-
-    # create a list to put in True / False if the glodap offsets intersect zero at float mid date
-    glodap_drift_possible_list = []
-
-    for n,g in offsets_g:
-        print(n)
         ncross = len(g.DOXY_ADJUSTED_offset)
 
         #if doxy_adjusted_offset is nan, skip
         if np.all(np.isnan(g.DOXY_ADJUSTED_offset.values)):
-            continue
+            return
+        print('At step 1: ' + str(g.main_float_wmo.values[0]))
 
         #add crossover location map
         axn = plt.subplot(4,4,1)
@@ -29,11 +33,11 @@ def plot_glodap_crossovers(glodap_offsets, offsets_g):
         glodap_lon = xr.where(g.glodap_longitude>180,g.glodap_longitude-360.,g.glodap_longitude)
         axn.plot(glodap_lon,g.glodap_latitude,'ro',label = 'Glodap',markersize=10)
         axn.legend()
-        axn.set_title('WMO: %d; N: %d; Dist filt %d; Depth min %d max %d\nDepth filt %d; Dens %.4f; Spice %.4f' % 
-                    (g.main_float_wmo.values[0],ncross, glodap_offsets["dist"],
-                    glodap_offsets["p_compare_min"], 
-                    glodap_offsets["p_compare_max"],glodap_offsets["delta_press"],
-                    glodap_offsets["delta_dens"],glodap_offsets["delta_spice"]))
+        axn.set_title('WMO: %s; N: %d; Dist filt %d; Depth min %d max %d\nDepth filt %d; Dens %.4f; Spice %.4f' % 
+                    (g.main_float_wmo.values[0],ncross, glodap_offsets["dist"][0],
+                    glodap_offsets["p_compare_min"][0], 
+                    glodap_offsets["p_compare_max"][0],glodap_offsets["delta_press"][0],
+                    glodap_offsets["delta_dens"][0],glodap_offsets["delta_spice"][0]))
 
         #time
         axn = plt.subplot(4,4,(2,4))
@@ -57,7 +61,7 @@ def plot_glodap_crossovers(glodap_offsets, offsets_g):
             X_series = pd.Series(mdates.date2num(g_ox_sorted.glodap_datetime))
             Y_series = pd.Series(g_ox_sorted.DOXY_ADJUSTED_offset_trimmed.values)
             CI_alpha = 0.95
-            b_yx, a, r2, CI_alpha_slope, ttt, y_err = regress_confidence_sokal_rohlf(X_series, Y_series, CI_alpha)
+            b_yx, a, r2, CI_alpha_slope, ttt, y_err = SR.regress_confidence_sokal_rohlf(X_series, Y_series, CI_alpha)
 
         #     t = np.arange(datetime(1980,1,1), datetime(2022,1,1), timedelta(days=1)).astype(datetime)
         #     tnum = mdates.date2num(t)
@@ -79,7 +83,7 @@ def plot_glodap_crossovers(glodap_offsets, offsets_g):
 
                 X_series_last_third = X_series.iloc[np.int64(np.round(len(X_series)*1/2)):-1]
                 Y_err_last_third = y_err.iloc[np.int64(np.round(len(X_series)*1/2)):-1]
-                b_err, a_err, _, _, _, _ = regress_confidence_sokal_rohlf(X_series_last_third, Y_err_last_third, CI_alpha)
+                b_err, a_err, _, _, _, _ = SR.regress_confidence_sokal_rohlf(X_series_last_third, Y_err_last_third, CI_alpha)
                 extrap_error = X_extend.iloc[-1]*b_err+a_err
                 y_err_extend = y_err.append(pd.Series(extrap_error))
 
@@ -96,7 +100,7 @@ def plot_glodap_crossovers(glodap_offsets, offsets_g):
                 y_extend = a+ X_extend*b_yx
                 X_series_first_half = X_series.iloc[0:np.int64(np.round(len(X_series)*1/2))]
                 Y_err_first_half = y_err.iloc[1:np.int64(np.round(len(X_series)*1/2))]
-                b_err, a_err, _, _, _, _ = regress_confidence_sokal_rohlf(X_series_last_third, Y_err_last_third, CI_alpha)
+                b_err, a_err, _, _, _, _ = SR.regress_confidence_sokal_rohlf(X_series_first_half, Y_err_first_half, CI_alpha)
                 extrap_error = X_extend.iloc[0]*b_err+a_err
                 y_err_extend = pd.Series(extrap_error).append(y_err)
 
@@ -307,10 +311,12 @@ def plot_glodap_crossovers(glodap_offsets, offsets_g):
         
         
         # Add density lines FLOAT
-        smax = float(max(g.PSAL_ADJUSTED_float)) + 0.1
-        smin = float(min(g.PSAL_ADJUSTED_float)) - 0.1
-        tmax = float(max(g.TEMP_ADJUSTED_float)) + 0.1
-        tmin = float(min(g.TEMP_ADJUSTED_float)) - 0.1
+        ASAL_ADJUSTED_float = gsw.SA_from_SP(g.PSAL_ADJUSTED_float, g.PRES_ADJUSTED_float, g.main_float_longitude, g.main_float_latitude)
+        CT_ADJUSTED_float = gsw.CT_from_t(ASAL_ADJUSTED_float, g.TEMP_ADJUSTED_float, g.PRES_ADJUSTED_float)
+        smax = float(np.nanmax(ASAL_ADJUSTED_float)) + 0.1
+        smin = float(np.nanmin(ASAL_ADJUSTED_float)) - 0.1
+        tmax = float(np.nanmax(CT_ADJUSTED_float)) + 0.1
+        tmin = float(np.nanmin(CT_ADJUSTED_float)) - 0.1
         # Create temp and salt vectors of appropiate dimensions
         ti = np.linspace(tmin,tmax,num=int(round((tmax-tmin)*10 + 1, 0)))
         si = np.linspace(smin,smax,num=int(round((smax-smin)*10 + 1, 0)))
@@ -323,16 +329,19 @@ def plot_glodap_crossovers(glodap_offsets, offsets_g):
         axn = plt.subplot(4,4,15)
         CS = plt.contour(si,ti,dens, linestyles='dashed', colors='k')
         axn.clabel(CS, fontsize=12, inline=1)
-        axn.scatter(g.PSAL_ADJUSTED_float,g.TEMP_ADJUSTED_float,c=g.DOXY_ADJUSTED_offset)
-        axn.set_xlim(min(g.PSAL_ADJUSTED_float) - .1, max(g.PSAL_ADJUSTED_float) + .1)
-        axn.set_ylim(min(g.TEMP_ADJUSTED_float) - 0.1, max(g.TEMP_ADJUSTED_float) + 0.1)
+        axn.scatter(ASAL_ADJUSTED_float,CT_ADJUSTED_float,c=g.DOXY_ADJUSTED_offset)
+        axn.set_xlim(np.nanmin(ASAL_ADJUSTED_float) - .1, np.nanmax(ASAL_ADJUSTED_float) + .1)
+        axn.set_ylim(np.nanmin(CT_ADJUSTED_float) - 0.1, np.nanmax(CT_ADJUSTED_float) + 0.1)
         axn.set_title('float T-S')
 
         # Add density lines GLODAP
-        smax = float(max(g.PSAL_ADJUSTED_glodap)) + 0.1
-        smin = float(min(g.PSAL_ADJUSTED_glodap)) - 0.1
-        tmax = float(max(g.TEMP_ADJUSTED_glodap)) + 0.1
-        tmin = float(min(g.TEMP_ADJUSTED_glodap)) - 0.1
+        ASAL_ADJUSTED_glodap = gsw.SA_from_SP(g.PSAL_ADJUSTED_glodap, g.PRES_ADJUSTED_glodap, g.glodap_longitude, g.glodap_latitude)
+        CT_ADJUSTED_glodap = gsw.CT_from_t(ASAL_ADJUSTED_glodap, g.TEMP_ADJUSTED_glodap, g.PRES_ADJUSTED_glodap)
+
+        smax = float(np.nanmax(ASAL_ADJUSTED_glodap)) + 0.1
+        smin = float(np.nanmin(ASAL_ADJUSTED_glodap)) - 0.1
+        tmax = float(np.nanmax(CT_ADJUSTED_glodap)) + 0.1
+        tmin = float(np.nanmin(CT_ADJUSTED_glodap)) - 0.1
         # Create temp and salt vectors of appropiate dimensions
         ti = np.linspace(tmin,tmax,num=int(round((tmax-tmin)*10 + 1, 0)))
         si = np.linspace(smin,smax,num=int(round((smax-smin)*10 + 1, 0)))
@@ -345,11 +354,13 @@ def plot_glodap_crossovers(glodap_offsets, offsets_g):
         axn = plt.subplot(4,4,16)
         CS = plt.contour(si,ti,dens, linestyles='dashed', colors='k')
         axn.clabel(CS, fontsize=12, inline=1)
-        cn = axn.scatter(g.PSAL_ADJUSTED_glodap,g.TEMP_ADJUSTED_glodap,c=g.DOXY_ADJUSTED_offset)
+        cn = axn.scatter(ASAL_ADJUSTED_glodap,CT_ADJUSTED_glodap,c=g.DOXY_ADJUSTED_offset)
         axn.set_title('GDAP T-S')
         cx = fig.add_axes([0.72,0.12,0.02,0.17])
         plt.colorbar(cn,cax=cx,label='DOXY OFFSET')
         plt.tight_layout()
+        print('Ready to save: ' + str(g.main_float_wmo.values[0]))
+
         plt.savefig(individual_plot_dir + str(g.main_float_wmo.values[0])+'_v_glodap_v2.png')
         plt.clf()
     #     break
