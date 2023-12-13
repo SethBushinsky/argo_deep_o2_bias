@@ -108,6 +108,10 @@ def pressure_level_filter(argo_path, output_dir, out_filename, gdap_offsets_n_te
             for a in range(0, ESD_test_out[1]):
                 temp_o2_offset = temp_o2_offset.where(temp_o2_offset != ESD_test_out[2][a])
 
+        # if there are too few points, set all to nans
+        if temp_o2_offset.count()<20:
+            temp_o2_offset[:] = np.nan
+
         # replace nan values with values of temp_o2_offset
         gdap_offsets_n_temp['DOXY_ADJUSTED_offset_trimmed'][gdap_offsets_n_temp['main_float_wmo']==[n]] = temp_o2_offset
 
@@ -130,16 +134,22 @@ def pressure_level_filter(argo_path, output_dir, out_filename, gdap_offsets_n_te
         # create new variables that will be the mean offsets for different time ranges
         empty_data = np.empty(len(gdap_offsets_n_temp['N_CROSSOVERS']))
         empty_data[:] = np.nan
+        new_data_array = xr.DataArray(empty_data, coords={'N_CROSSOVERS': gdap_offsets_n_temp['N_CROSSOVERS']}, dims=['N_CROSSOVERS'])
+
+        gdap_offsets_n_temp['First_Float_Profile_Date'] = new_data_array.copy()  # for storing the first date of first float profile
+
         for fa in range(len(float_age_bins)-1):
-            new_data_array = xr.DataArray(empty_data, coords={'N_CROSSOVERS': gdap_offsets_n_temp['N_CROSSOVERS']}, dims=['N_CROSSOVERS'])
             gdap_offsets_n_temp['DOXY_ADJUSTED_offset_' + 'age_' + str(float_age_bins[fa])] = new_data_array.copy()
-            
+            gdap_offsets_n_temp['DOXY_ADJUSTED_offset_' + 'age_' + str(float_age_bins[fa]) + '_count'] = new_data_array.copy()
+
         wmo_list = np.unique(gdap_offsets_n_temp.main_float_wmo)
         # loop through all floats
         for wmo_n in wmo_list:
             # load Sprof file, get date of first profile
             argo_n = xr.open_dataset(argo_path + str(wmo_n) + '_Sprof.nc')
             first_profile_date = argo_n.JULD[0].values
+
+            gdap_offsets_n_temp['First_Float_Profile_Date'][gdap_offsets_n_temp.main_float_wmo==wmo_n] = first_profile_date
 
             # calculate offset time relative to first deployment
             time_since_first_ns = gdap_offsets_n_temp.main_float_juld[gdap_offsets_n_temp.main_float_wmo==wmo_n].values-first_profile_date
@@ -155,8 +165,11 @@ def pressure_level_filter(argo_path, output_dir, out_filename, gdap_offsets_n_te
                 age_index = np.logical_and(time_since_first_days>=float_age_bins[fa], time_since_first_days<float_age_bins[fa+1])
 
                 # save the mean o2 offset where age_index is true to the correct age variable for that float
-                gdap_offsets_n_temp['DOXY_ADJUSTED_offset_' + 'age_' + str(float_age_bins[fa])]\
-                    [gdap_offsets_n_temp.main_float_wmo==wmo_n] = np.nanmean(temp_o2_offset.where(age_index).values)
+                if not np.all(np.isnan(temp_o2_offset.where(age_index).values)):
+                    gdap_offsets_n_temp['DOXY_ADJUSTED_offset_' + 'age_' + str(float_age_bins[fa])]\
+                        [gdap_offsets_n_temp.main_float_wmo==wmo_n] = np.nanmean(temp_o2_offset.where(age_index).values)
+                gdap_offsets_n_temp['DOXY_ADJUSTED_offset_' + 'age_' + str(float_age_bins[fa]) + '_count']\
+                                    [gdap_offsets_n_temp.main_float_wmo==wmo_n] = (temp_o2_offset.where(age_index).count())
 
 
     # save a copy of gdap_offsets_n_temp for later plotting / analysis:

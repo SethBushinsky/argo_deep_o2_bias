@@ -2,6 +2,9 @@ import pandas as pd
 from scipy import stats
 import numpy as np
 
+# from: https://towardsdatascience.com/anomaly-detection-with-generalized-extreme-studentized-deviate-in-python-f350075900e2 
+# https://www.itl.nist.gov/div898/handbook/eda/section3/eda35h3.htm 
+# https://www.itl.nist.gov/div898/handbook/eda/section3/eda35h1.htm
 def test_stat(y, iteration, verboseTF):
     std_dev = np.std(y)
     avg_y = np.mean(y)

@@ -22,45 +22,61 @@ def regress_confidence_sokal_rohlf(X, Y, alpha):
     sum_xy = np.nansum(xy)
 
     # regression coefficient (slope of the regression)
-    b_yx = sum_xy/sum_x2
+    # Check if sum_x2 is zero or NaN
+    if sum_x2 == 0 or np.isnan(sum_x2):
+        # Handle the case where division is not possible or meaningful
+        b_yx = np.nan  # or set to some other appropriate value
+        a = np.nan
+        r2 = np.nan
+        CI_alpha_slope = np.nan
+        t_stat = np.nan
+        sb = np.nan
+        y_err = np.nan
+    else:
+        # Calculate b_yx
+        b_yx = sum_xy / sum_x2
 
-    # y intercept 
-    a = Y_bar - b_yx*X_bar
+        # y intercept 
+        a = Y_bar - b_yx*X_bar
 
-    # predicted Y based on regression
-    Y_hat = b_yx*X + a
+        # predicted Y based on regression
+        Y_hat = b_yx*X + a
 
-    # unexplained sum of squares
-    d2_yx = np.sum(np.square(Y-Y_hat))
+        # unexplained sum of squares
+        d2_yx = np.sum(np.square(Y-Y_hat))
 
-    # explained variance:
-    s2_y_hat = np.sum(np.square(Y_hat - Y_bar))/(len(Y)-1)
+        # explained variance:
+        s2_y_hat = np.sum(np.square(Y_hat - Y_bar))/(len(Y)-1)
 
-    # unexplained variance:
-    dof = (len(Y) - 2)
-    s2_yx = d2_yx/dof;
+        # unexplained variance:
+        dof = (len(Y) - 2)
 
-    # total variance:
-    s2_Y = np.sum(np.square(Y - Y_bar))/(len(Y)-1)
+        if dof==0:
+            s2_yx = np.nan
+        else:
+            s2_yx = d2_yx/dof
 
-    # coefficient of determination (r2)
-    r2 = s2_y_hat/s2_Y
+        # total variance:
+        s2_Y = np.sum(np.square(Y - Y_bar))/(len(Y)-1)
 
-    # standard error of the regression coefficient
-    sb = np.sqrt(s2_yx/sum_x2);
+        # coefficient of determination (r2)
+        r2 = s2_y_hat/s2_Y
 
-    # regression coefficient (slope) different than zero?
-    t_s = (b_yx - 0)/sb
+        # standard error of the regression coefficient
+        sb = np.sqrt(s2_yx/sum_x2);
 
-    # t stat
-    t_stat = stats.t.ppf(1-q/2, dof)
+        # regression coefficient (slope) different than zero?
+        # t_s = (b_yx - 0)/sb
 
-    CI_alpha_slope = [b_yx - t_stat*sb, b_yx + t_stat*sb]
+        # t stat
+        t_stat = stats.t.ppf(1-q/2, dof)
 
-    # standard error of Y_hat for a given value of X (every value)
-    sy_hat = (s2_yx*(1/len(Y) + ((X-X_bar)**2)/sum_x2))**0.5
+        CI_alpha_slope = [b_yx - t_stat*sb, b_yx + t_stat*sb]
 
-    # upper confidence interval
-    y_err = t_stat*sy_hat
+        # standard error of Y_hat for a given value of X (every value)
+        sy_hat = (s2_yx*(1/len(Y) + ((X-X_bar)**2)/sum_x2))**0.5
+
+        # upper confidence interval
+        y_err = t_stat*sy_hat
 
     return b_yx, a, r2, CI_alpha_slope, t_stat*sb/2, y_err
