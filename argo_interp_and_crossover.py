@@ -6,10 +6,10 @@ from scipy import interpolate
 import glob, os
 import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
-
+import pandas as pd
 
 def argo_interp_profiles(argo_path, LIAR_path, argo_path_interpolated, argo_path_derived, argo_file, qc_data_fields, bgc_data_fields, p_interp, \
-                          derived_list, interpolation_list):
+                          derived_list, interpolation_list, adjustment):
     print('Processing float file '+ argo_file)
     argo_n = xr.load_dataset(argo_path+argo_file)
     argo_n = argo_n.set_coords(('PRES_ADJUSTED','LATITUDE','LONGITUDE','JULD'))
@@ -73,6 +73,13 @@ def argo_interp_profiles(argo_path, LIAR_path, argo_path_interpolated, argo_path
     argo_interp_n['num_var'] = (['N_PROF'],np.zeros((nprof_n))) # changed from np.empty to np.zeros to avoid filling array with random large numbers
     for v in derived_list: # all the variables that will be saved out in the derived and interpolated files
         argo_interp_n[v] = (['N_PROF','N_LEVELS'],np.copy(nan_interp))
+
+    # if reading in adjustment / offset data, load impacts and apply as appropriate
+    if adjustment is True:
+        impact_n = xr.load_dataset(argo_path + argo_file[0:7] + '_impact.nc')
+        argo_n['DOXY_ADJUSTED'] = argo_n['DOXY_ADJUSTED'] - impact_n.mean_O2_offset
+        if 'NITRATE_ADJUSTED' in argo_n.keys():
+            argo_n['NITRATE_ADJUSTED'] = argo_n['NITRATE_ADJUSTED'] + impact_n.mean_nitrate_impact_change
 
     #check first if PH_IN_SITU_TOTAL_ADJUSTED exists
     if 'PH_IN_SITU_TOTAL_ADJUSTED' in argo_n.keys() and np.any(~np.isnan(argo_n.PH_IN_SITU_TOTAL_ADJUSTED)):
@@ -156,15 +163,39 @@ def argo_interp_profiles(argo_path, LIAR_path, argo_path_interpolated, argo_path
                 opt_buffers_mode=1,
         )
         
-        argo_n['DIC'] = (['N_PROF','N_LEVELS'],results['dic'])  
-        
         argo_n['pH_25C_TOTAL_ADJUSTED'] = (['N_PROF','N_LEVELS'],carbon_utils.co2sys_pH25C(argo_n.TALK_LIAR,
                                                     argo_n.PH_IN_SITU_TOTAL_ADJUSTED,
                                                     argo_n.TEMP_ADJUSTED,
                                                     argo_n.PSAL_ADJUSTED,
                                                     argo_n.PRES_ADJUSTED))
 
+        # if applying adjustment to pH - apply it to pH 25C, then recalculate pH insitu, then calculate DIC
+        if adjustment is True:
+            argo_n['pH_25C_TOTAL_ADJUSTED'] = argo_n['pH_25C_TOTAL_ADJUSTED'] + impact_n.mean_pH_impact_change # note that I am not corrected the in situ pH here
 
+            results = pyco2.sys(
+                par1=argo_n.TALK_LIAR, 
+                par2=argo_n.pH_25C_TOTAL_ADJUSTED, # using the impact adjusted pH
+                par1_type=1,
+                par2_type=3,
+                temperature=25, 
+                pressure=argo_n.PRES_ADJUSTED, 
+                salinity=argo_n.PSAL_ADJUSTED, 
+                temperature_out=argo_n.TEMP_ADJUSTED,#*np.ones(argo_n.PRES_ADJUSTED.shape), #fixed 25C temperature
+                pressure_out=argo_n.PRES_ADJUSTED,
+                total_silicate=SI,
+                total_phosphate=PO4,
+                opt_pH_scale = 1, #total
+                opt_k_carbonic=10, #Lueker et al. 2000
+                opt_k_bisulfate=1, # Dickson 1990 (Note, matlab co2sys combines KSO4 with TB. option 3 = KSO4 of Dickson & TB of Lee 2010)
+                opt_total_borate=2, # Lee et al. 2010
+                opt_k_fluoride=2, # Perez and Fraga 1987
+                opt_buffers_mode=1,
+                )
+            argo_n['DIC'] = (['N_PROF','N_LEVELS'],results['dic'])  
+        else: # otherwise, just save DIC with no adjustment 
+            argo_n['DIC'] = (['N_PROF','N_LEVELS'],results['dic'])  
+            
     ##### now calc potential density, save, and interpolate data for comparison
     for p in range(nprof_n):
         #pressure for profile
@@ -191,6 +222,13 @@ def argo_interp_profiles(argo_path, LIAR_path, argo_path_interpolated, argo_path
         if (len(p100) <= 1) or (np.nanmax(p100)<p_interp_min):
             continue
         
+        # # check for the presence of large gaps in the float profile data - can figure out how to deal with them once you know their prevalence 
+        # if max(np.diff(p100))>125:
+        #     print(np.diff(p100))
+        #     data_out = p100.reshape(-1,1)
+        #     df = pd.DataFrame(data_out, columns = ['Pressure prior to interpolation'])
+        #     df.to_csv(argo_path_interpolated + str(wmo_n) + '_' + str(p) + '.csv', index=False)
+
         #find which crossover variables exist in main float file
         var_list_n = []
         for vname in interpolation_list:
@@ -249,6 +287,29 @@ def argo_interp_profiles(argo_path, LIAR_path, argo_path_interpolated, argo_path
                     #assign interpolated variables to array 
                     argo_interp_n[var][p,:] = var_interp_p
             
+                # check for gaps in the original data greater than 125 m
+                gap_index= (np.diff(p100u)>125)
+
+                # if any values of gap_index are true, loop through and set values of interpolated data that are between value of large gaps to nan 
+                if any(gap_index):
+                    temp_var = argo_interp_n[var][p,:]
+                    data_out = temp_var.values.reshape(-1,1)
+                    combined_data = np.hstack((p_interp.reshape(-1, 1), data_out))
+                    df = pd.DataFrame(combined_data, columns = ['Pressure', 'Oxygen'])
+                    df.to_csv(argo_path_interpolated + str(wmo_n) + '_' + str(p) + '.csv', index=False)
+
+                    # print(argo_interp_n[var][p,:])
+                    for idx, gi in enumerate(gap_index):
+                        if gi:
+                            # print(p100u[idx])
+                            # print(p100u[idx+1])
+                            argo_interp_n[var][p,np.logical_and(p_interp>p100u[idx],p_interp<p100u[idx+1])] = np.nan
+                    temp_var = argo_interp_n[var][p,:]
+                    data_out = temp_var.values.reshape(-1,1)
+                    combined_data = np.hstack((p_interp.reshape(-1, 1), data_out))
+                    df = pd.DataFrame(combined_data, columns = ['Pressure', 'Oxygen'])
+                    df.to_csv(argo_path_interpolated + str(wmo_n) + '_' + str(p) + '_after_removal.csv', index=False)
+
     #             else: 
                 # print('profile data not deep enough to interpolate ' + str(p) + ' ' +  var)
                 #                       str(np.nanmax(p100u[~np.isnan(var100u.values)])))

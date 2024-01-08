@@ -23,8 +23,9 @@ def plot_glodap_crossovers(individual_plot_dir, mean_level_offsets, g, pressure_
     ncross = len(g.DOXY_ADJUSTED_offset)
 
     #if doxy_adjusted_offset is nan, skip
-    # if np.all(np.isnan(g.DOXY_ADJUSTED_offset.values)):
-        # return
+    if np.all(np.isnan(g.DOXY_ADJUSTED_offset.values)):
+        print('No non-nan DOXY offsets')
+        return
     # print('At step 1: ' + str(g.main_float_wmo.values[0]))
 
     plt_rows = 5
