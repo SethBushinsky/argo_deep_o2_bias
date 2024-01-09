@@ -1,6 +1,6 @@
 import xarray as xr
 import numpy as np
-import carbon_utils
+import functions.carbon_utils as carbon_utilities
 import PyCO2SYS as pyco2
 from scipy import interpolate
 import glob, os
@@ -131,7 +131,7 @@ def argo_interp_profiles(argo_path, LIAR_path, argo_path_interpolated, argo_path
             MeasIDVec = [1, 7, 6]                            
 
 
-        results = carbon_utils.LIAR_matlab(LIAR_path,
+        results = carbon_utilities.LIAR_matlab(LIAR_path,
                                                 Coordinates.tolist(),
                                                 Measurements.tolist(),
                                                 MeasIDVec,
@@ -163,7 +163,7 @@ def argo_interp_profiles(argo_path, LIAR_path, argo_path_interpolated, argo_path
                 opt_buffers_mode=1,
         )
         
-        argo_n['pH_25C_TOTAL_ADJUSTED'] = (['N_PROF','N_LEVELS'],carbon_utils.co2sys_pH25C(argo_n.TALK_LIAR,
+        argo_n['pH_25C_TOTAL_ADJUSTED'] = (['N_PROF','N_LEVELS'],carbon_utilities.co2sys_pH25C(argo_n.TALK_LIAR,
                                                     argo_n.PH_IN_SITU_TOTAL_ADJUSTED,
                                                     argo_n.TEMP_ADJUSTED,
                                                     argo_n.PSAL_ADJUSTED,
@@ -204,12 +204,12 @@ def argo_interp_profiles(argo_path, LIAR_path, argo_path_interpolated, argo_path
         # For interpolated data, shouldn't calculate pdens and spice and then interpolate - 
         # should interpolate psal and temp and then calculate spice and pdens
         # Do both so that you are able to have PDENS and spice in the derived files too (do I need them?)
-        argo_n['PDENS'][p,:] = carbon_utils.sigma0(argo_n.PSAL_ADJUSTED[p,:].values,
+        argo_n['PDENS'][p,:] = carbon_utilities.sigma0(argo_n.PSAL_ADJUSTED[p,:].values,
                                                     argo_n.TEMP_ADJUSTED[p,:].values,
                                                     argo_n.LONGITUDE[p].values,
                                                     argo_n.LATITUDE[p].values,
                                                     argo_n.PRES_ADJUSTED[p,:].values)
-        argo_n['spice'][p,:] = carbon_utils.spiciness0(argo_n.PSAL_ADJUSTED[p,:].values,
+        argo_n['spice'][p,:] = carbon_utilities.spiciness0(argo_n.PSAL_ADJUSTED[p,:].values,
                                                     argo_n.TEMP_ADJUSTED[p,:].values,
                                                     argo_n.LONGITUDE[p].values,
                                                     argo_n.LATITUDE[p].values,
@@ -323,12 +323,12 @@ def argo_interp_profiles(argo_path, LIAR_path, argo_path_interpolated, argo_path
         # For interpolated data, shouldn't calculate pdens and spice and then interpolate - 
         # should interpolate psal and temp and then calculate spice and pdens
         # Do both so that you are able to have PDENS and spice in the derived files too (do I need them?)
-        argo_interp_n['PDENS'][p,:] = carbon_utils.sigma0(argo_interp_n.PSAL_ADJUSTED[p,:].values,
+        argo_interp_n['PDENS'][p,:] = carbon_utilities.sigma0(argo_interp_n.PSAL_ADJUSTED[p,:].values,
                                                     argo_interp_n.TEMP_ADJUSTED[p,:].values,
                                                     argo_interp_n.LONGITUDE[p].values,
                                                     argo_interp_n.LATITUDE[p].values,
                                                     argo_interp_n.PRES_ADJUSTED[p,:].values)
-        argo_interp_n['spice'][p,:] = carbon_utils.spiciness0(argo_interp_n.PSAL_ADJUSTED[p,:].values,
+        argo_interp_n['spice'][p,:] = carbon_utilities.spiciness0(argo_interp_n.PSAL_ADJUSTED[p,:].values,
                                                     argo_interp_n.TEMP_ADJUSTED[p,:].values,
                                                     argo_interp_n.LONGITUDE[p].values,
                                                         argo_interp_n.LATITUDE[p].values,

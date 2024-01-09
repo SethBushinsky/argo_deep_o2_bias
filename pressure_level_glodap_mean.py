@@ -1,6 +1,6 @@
 import xarray as xr
 import pandas as pd
-import outlier_filter_ESD_test as outlier
+import functions.outlier_filter_ESD_test as outlier
 import numpy as np
 import time
 

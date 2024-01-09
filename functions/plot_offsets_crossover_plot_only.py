@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import xarray as xr
 import matplotlib.dates as mdates
 import numpy as np
-import sokal_rohlf_calculations as SR
+import functions.sokal_rohlf_calculations as SR
 import pandas as pd
 from scipy import interpolate
 import scipy.stats as stats
