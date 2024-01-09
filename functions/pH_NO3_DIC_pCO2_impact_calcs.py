@@ -1,6 +1,6 @@
 import xarray as xr
 import numpy as np
-import carbon_utils
+import functions.carbon_utils as carbon_utils
 import PyCO2SYS as pyco2
 
 # float_wmo_list = glodap_offsets_p.index.values
