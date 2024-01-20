@@ -50,7 +50,7 @@ def LIPHR_matlab(LIPHR_path,Coordinates,Measurements,MeasIDVec,OAAdjustTF=False,
     return results
 
 
-def ESPER_mixed_matlab(LIPHR_path,DesiredVariables,Coordinates,Measurements,MeasIDVec_ESPER,Equations, Dates, VerboseTF):
+def ESPER_mixed_matlab(LIPHR_path,DesiredVariables,Coordinates,Measurements,MeasIDVec_ESPER,Equations, Dates, VerboseTF, pHCalcTF):
 #launch MATLAB engine API
     eng = matlab.engine.start_matlab()
 
@@ -71,7 +71,7 @@ def ESPER_mixed_matlab(LIPHR_path,DesiredVariables,Coordinates,Measurements,Meas
 
     #call MATLAB function
     results = eng.ESPER_Mixed_wrapper_for_python(DesiredVariables,Coordinates,Measurements,MeasIDVec_ESPER,Equations,
-                        Dates, VerboseTF)
+                        Dates, VerboseTF, pHCalcTF)
     eng.quit()
 
     results = np.asarray(results)   

@@ -171,7 +171,7 @@ def argo_interp_profiles(argo_path, LIAR_path, argo_path_interpolated, argo_path
 
         # if applying adjustment to pH - apply it to pH 25C, then recalculate pH insitu, then calculate DIC
         if adjustment is True:
-            argo_n['pH_25C_TOTAL_ADJUSTED'] = argo_n['pH_25C_TOTAL_ADJUSTED'] + impact_n.mean_pH_impact_change # note that I am not corrected the in situ pH here
+            argo_n['pH_25C_TOTAL_ADJUSTED'] = argo_n['pH_25C_TOTAL_ADJUSTED'] + impact_n.mean_pH_impact_change # note that I am not correcting the in situ pH
 
             results = pyco2.sys(
                 par1=argo_n.TALK_LIAR, 

@@ -90,7 +90,7 @@ def calc_derived_2_pH_no3_impacts(LIPHR_path, MeasIDVec_LIR, MeasIDVec_ESPER, De
                                                     MeasIDVec_ESPER,
                                                     Equations, 
                                                     decimal_year.values.tolist(), 
-                                                    0)
+                                                    0, 1)
     # remove data when oxygen is NaN - avoids biasing difference low
     pH_orig_ESPER_no_nan = np.copy(orig_pH_ESPER)
     pH_orig_ESPER_no_nan[np.isnan(Measurements_all_S_T_O2[:,2])] = np.nan
@@ -135,7 +135,7 @@ def calc_derived_2_pH_no3_impacts(LIPHR_path, MeasIDVec_LIR, MeasIDVec_ESPER, De
                                                     MeasIDVec_ESPER,
                                                     Equations, 
                                                     decimal_year.values.tolist(), 
-                                                    0)
+                                                    0, 1)
 
     # remove data when oxygen is NaN - avoids biasing difference low
     pH_ESPER_o2_adjust_no_nan = np.copy(pH_ESPER_o2_adjust)
