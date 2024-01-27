@@ -296,7 +296,7 @@ def argo_interp_profiles(argo_path, LIAR_path, argo_path_interpolated, argo_path
                     data_out = temp_var.values.reshape(-1,1)
                     combined_data = np.hstack((p_interp.reshape(-1, 1), data_out))
                     df = pd.DataFrame(combined_data, columns = ['Pressure', 'Oxygen'])
-                    df.to_csv(argo_path_interpolated + str(wmo_n) + '_' + str(p) + '.csv', index=False)
+                    df.to_csv(argo_path_interpolated + str(wmo_n) + '_' + str(p) + var + '.csv', index=False)
 
                     # print(argo_interp_n[var][p,:])
                     for idx, gi in enumerate(gap_index):
@@ -308,7 +308,7 @@ def argo_interp_profiles(argo_path, LIAR_path, argo_path_interpolated, argo_path
                     data_out = temp_var.values.reshape(-1,1)
                     combined_data = np.hstack((p_interp.reshape(-1, 1), data_out))
                     df = pd.DataFrame(combined_data, columns = ['Pressure', 'Oxygen'])
-                    df.to_csv(argo_path_interpolated + str(wmo_n) + '_' + str(p) + '_after_removal.csv', index=False)
+                    df.to_csv(argo_path_interpolated + str(wmo_n) + '_' + str(p) + var + '_after_removal.csv', index=False)
 
     #             else: 
                 # print('profile data not deep enough to interpolate ' + str(p) + ' ' +  var)
