@@ -41,6 +41,34 @@ def argo_interp_profiles(argo_path, LIAR_path, argo_path_interpolated, argo_path
         if b in argo_n.keys() and np.any(qc_val==8):
             naninds = np.argwhere(qc_val==8)[:,0]
             argo_n[b][naninds,:] = np.nan
+    
+    #Finding and removing all non-delayed mode data
+        # sometimes parameters are missing from profiles - 
+        # need to loop through all profiles and check which parameters are present
+    parameter_array = argo_n.STATION_PARAMETERS.values.astype(str)
+
+    for idx in range(len(parameter_array)):
+        prof_parameters = parameter_array[idx]
+        # print(prof_parameters)
+
+        # loop through each paramter in the profile 
+        for var in prof_parameters:
+            var_str = var.strip()
+            if len(var_str)==0: # only proceed if the variable exists 
+                continue
+            var_ind = [idx for idx, s in enumerate(prof_parameters) if s.strip()== var_str]
+            # print(var_ind)
+
+            # get parameter data mode values for that profile / variable
+            var_data_mode = argo_n.PARAMETER_DATA_MODE[idx,var_ind].values
+            # print(var_data_mode)
+
+            decoded_arr = np.array([elem.decode() if isinstance(elem, bytes) else np.nan for elem in var_data_mode.flatten()])
+            # print(decoded_arr)
+            result = np.where(decoded_arr == 'D', False, True) # true whereever mode is not delayed
+            # print(result)
+            if result:
+                argo_n[var_str +'_ADJUSTED'][idx,:] = np.nan
 
     # we are currently processing floats that have no valid biogeochemical data. 
     #Should check to see if data in key 
@@ -54,7 +82,7 @@ def argo_interp_profiles(argo_path, LIAR_path, argo_path_interpolated, argo_path
     else:
         print(argo_file + ' has no valid BGC data')
         return
-
+    
     argo_n['PDENS'] = (['N_PROF','N_LEVELS'],np.empty(argo_n.PRES_ADJUSTED.shape)) #nprof x nlevel
     argo_n.PDENS[:] = np.nan
     argo_n['spice'] = (['N_PROF','N_LEVELS'],np.empty(argo_n.PRES_ADJUSTED.shape)) #nprof x nlevel
@@ -292,11 +320,11 @@ def argo_interp_profiles(argo_path, LIAR_path, argo_path_interpolated, argo_path
 
                 # if any values of gap_index are true, loop through and set values of interpolated data that are between value of large gaps to nan 
                 if any(gap_index):
-                    temp_var = argo_interp_n[var][p,:]
-                    data_out = temp_var.values.reshape(-1,1)
-                    combined_data = np.hstack((p_interp.reshape(-1, 1), data_out))
-                    df = pd.DataFrame(combined_data, columns = ['Pressure', 'Oxygen'])
-                    df.to_csv(argo_path_interpolated + str(wmo_n) + '_' + str(p) + var + '.csv', index=False)
+                    # temp_var = argo_interp_n[var][p,:]
+                    # data_out = temp_var.values.reshape(-1,1)
+                    # combined_data = np.hstack((p_interp.reshape(-1, 1), data_out))
+                    # df = pd.DataFrame(combined_data, columns = ['Pressure', 'Oxygen'])
+                    # df.to_csv(argo_path_interpolated + str(wmo_n) + '_' + str(p) + var + '.csv', index=False)
 
                     # print(argo_interp_n[var][p,:])
                     for idx, gi in enumerate(gap_index):
@@ -304,11 +332,11 @@ def argo_interp_profiles(argo_path, LIAR_path, argo_path_interpolated, argo_path
                             # print(p100u[idx])
                             # print(p100u[idx+1])
                             argo_interp_n[var][p,np.logical_and(p_interp>p100u[idx],p_interp<p100u[idx+1])] = np.nan
-                    temp_var = argo_interp_n[var][p,:]
-                    data_out = temp_var.values.reshape(-1,1)
-                    combined_data = np.hstack((p_interp.reshape(-1, 1), data_out))
-                    df = pd.DataFrame(combined_data, columns = ['Pressure', 'Oxygen'])
-                    df.to_csv(argo_path_interpolated + str(wmo_n) + '_' + str(p) + var + '_after_removal.csv', index=False)
+                    # temp_var = argo_interp_n[var][p,:]
+                    # data_out = temp_var.values.reshape(-1,1)
+                    # combined_data = np.hstack((p_interp.reshape(-1, 1), data_out))
+                    # df = pd.DataFrame(combined_data, columns = ['Pressure', 'Oxygen'])
+                    # df.to_csv(argo_path_interpolated + str(wmo_n) + '_' + str(p) + var + '_after_removal.csv', index=False)
 
     #             else: 
                 # print('profile data not deep enough to interpolate ' + str(p) + ' ' +  var)
