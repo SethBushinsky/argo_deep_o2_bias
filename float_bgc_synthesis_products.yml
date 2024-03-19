@@ -16,6 +16,7 @@ dependencies:
   - jupyter 
   - jupytext
   - requests
+  - tqdm
   - pip
   - pip:
     - PyCO2SYS==1.8.1 
