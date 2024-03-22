@@ -41,6 +41,9 @@ def calc_derived_2_pH_no3_impacts(LIPHR_path, MeasIDVec_LIR, MeasIDVec_ESPER, De
 
     Measurements_all_S_T_O2 = np.empty([nprof, 3],dtype=float)
     Measurements_all_S_T_O2[:] = np.nan
+
+    Measurements_all_S_T = np.empty([nprof, 2],dtype=float)
+    Measurements_all_S_T[:] = np.nan
     for p in range(nprof):
         # load interpolated argo_data so that 1500 m data is present 
         argo_profile = argo_interp_n.isel(N_PROF=p)
@@ -60,6 +63,10 @@ def calc_derived_2_pH_no3_impacts(LIPHR_path, MeasIDVec_LIR, MeasIDVec_ESPER, De
                             data_1500.TEMP_ADJUSTED.values, 
                             data_1500.DOXY_ADJUSTED.values),
                             axis=1)
+        
+        Measurements_all_S_T[p,:] = np.stack((data_1500.PSAL_ADJUSTED.values, 
+                        data_1500.TEMP_ADJUSTED.values),
+                        axis=1)
     if np.sum(~np.isnan(Coordinates_all))==0: # if no valid 1500 meter data is present, skip 
         return
 
@@ -90,7 +97,7 @@ def calc_derived_2_pH_no3_impacts(LIPHR_path, MeasIDVec_LIR, MeasIDVec_ESPER, De
                                                     MeasIDVec_ESPER,
                                                     Equations, 
                                                     decimal_year.values.tolist(), 
-                                                    0, 1)
+                                                    0, 0)
     # remove data when oxygen is NaN - avoids biasing difference low
     pH_orig_ESPER_no_nan = np.copy(orig_pH_ESPER)
     pH_orig_ESPER_no_nan[np.isnan(Measurements_all_S_T_O2[:,2])] = np.nan
@@ -98,6 +105,28 @@ def calc_derived_2_pH_no3_impacts(LIPHR_path, MeasIDVec_LIR, MeasIDVec_ESPER, De
     # save 1500 pH orig
     argo_derived_n['pH_1500_orig_ESPER'] = (['N_PROF'],np.empty(argo_derived_n.PRES_ADJUSTED.shape[0])) #nprof x nlevel
     argo_derived_n.pH_1500_orig_ESPER[:] = pH_orig_ESPER_no_nan[:,0]
+   
+    Equations_ESPER_ST = 8 # for ESPER - asking to use equation w/ S, T 
+    MeasIDVec_ESPER_ST = [1, 2] # S, T - different numbering than v2 LIRs
+
+    # calculate ESPER pH at 1500 m without using oxygen
+    pH_ESPER_wo_O2 = carbon_utils.ESPER_mixed_matlab(LIPHR_path,
+                                                    DesiredVariables,
+                                                    Coordinates_all.tolist(),
+                                                    Measurements_all_S_T.tolist(),
+                                                    MeasIDVec_ESPER_ST,
+                                                    Equations_ESPER_ST, 
+                                                    decimal_year.values.tolist(), 
+                                                    0, 0)
+    # remove data when Temp is NaN - avoids biasing difference low
+    pH_ESPER_wo_O2_no_nan = np.copy(pH_ESPER_wo_O2)
+    pH_ESPER_wo_O2_no_nan[np.isnan(Measurements_all_S_T[:,1])] = np.nan
+
+    # save 1500 pH orig
+    argo_derived_n['pH_1500_ESPER_wo_O2'] = (['N_PROF'],np.empty(argo_derived_n.PRES_ADJUSTED.shape[0])) #nprof x nlevel
+    argo_derived_n.pH_1500_ESPER_wo_O2[:] = pH_ESPER_wo_O2_no_nan[:,0]
+
+
 
     # create a second Measurements array that adjusts oxygen according to the mean glodap bias. Subtract the offset to correct it properly
     # create a measurements_offset array that only has S, O2, and T:
@@ -135,7 +164,7 @@ def calc_derived_2_pH_no3_impacts(LIPHR_path, MeasIDVec_LIR, MeasIDVec_ESPER, De
                                                     MeasIDVec_ESPER,
                                                     Equations, 
                                                     decimal_year.values.tolist(), 
-                                                    0, 1)
+                                                    0, 0)
 
     # remove data when oxygen is NaN - avoids biasing difference low
     pH_ESPER_o2_adjust_no_nan = np.copy(pH_ESPER_o2_adjust)
@@ -149,6 +178,12 @@ def calc_derived_2_pH_no3_impacts(LIPHR_path, MeasIDVec_LIR, MeasIDVec_ESPER, De
         argo_derived_n.PH_IN_SITU_TOTAL_ADJUSTED + np.nanmean(pH_ESPER_o2_adjust_no_nan - pH_orig_ESPER_no_nan)* \
         ((np.nanmean(Measurements_all_S_T_O2[:,1]+273.15))/(argo_derived_n.TEMP_ADJUSTED + 273.15)) #2023_10_02 adding temperature dependency of k0
     
+    # Impact of removing O2 can be seen in the test_pH minus new_pH average 
+    argo_derived_n['PH_IN_SITU_TOTAL_ADJUSTED_wo_O2_ESPER'] = \
+        argo_derived_n.PH_IN_SITU_TOTAL_ADJUSTED + np.nanmean(pH_ESPER_wo_O2_no_nan - pH_orig_ESPER_no_nan)* \
+        ((np.nanmean(Measurements_all_S_T[:,1]+273.15))/(argo_derived_n.TEMP_ADJUSTED + 273.15)) #2023_10_02 adding temperature dependency of k0
+    
+
      # do additional nitrate calculations if NITRATE is present
     if 'NITRATE_ADJUSTED' in argo_derived_n.keys():
             
@@ -161,6 +196,7 @@ def calc_derived_2_pH_no3_impacts(LIPHR_path, MeasIDVec_LIR, MeasIDVec_ESPER, De
         argo_derived_n['NO3_1500_orig_LINR'] = (['N_PROF'],np.empty(argo_derived_n.PRES_ADJUSTED.shape[0])) #nprof x nlevel
         argo_derived_n.NO3_1500_orig_LINR[:] = orig_no3[:,0]
 
+        # calculate LINR NO3 at 1500m with corrected oxygen 
         no3_o2_adjust = carbon_utils.LINR_matlab(LIPHR_path,
                                         Coordinates_all.tolist(),
                                         Measurements_S_T_O2_w_o2_offset.tolist(),
@@ -174,7 +210,23 @@ def calc_derived_2_pH_no3_impacts(LIPHR_path, MeasIDVec_LIR, MeasIDVec_ESPER, De
         
         argo_derived_n['NITRATE_ADJUSTED_w_O2_ADJUST'] = \
             argo_derived_n.NITRATE_ADJUSTED + np.nanmean(no3_o2_adjust_no_nan - orig_no3)
-    
+
+        MeasIDVec_LIR_no_o2 = [1, 7]
+        # calculate LINR NO3 at 1500m without using oxygen
+        no3_no_o2 = carbon_utils.LINR_matlab(LIPHR_path,
+                                        Coordinates_all.tolist(),
+                                        Measurements_all_S_T.tolist(),
+                                        MeasIDVec_LIR_no_o2)  
+        # remove data when oxygen is NaN - avoids biasing difference low
+        no3_no_o2_no_nan = np.copy(no3_no_o2)
+        no3_no_o2_no_nan[np.isnan(Measurements_all_S_T[:,1])] = np.nan
+
+        argo_derived_n['NO3_1500_no_o2'] = (['N_PROF'],np.empty(argo_derived_n.PRES_ADJUSTED.shape[0])) #nprof x nlevel
+        argo_derived_n.NO3_1500_no_o2[:] = no3_no_o2_no_nan[:,0]
+        
+        argo_derived_n['NITRATE_ADJUSTED_wo_O2'] = \
+            argo_derived_n.NITRATE_ADJUSTED + np.nanmean(no3_no_o2_no_nan - orig_no3)
+
     argo_derived_n.to_netcdf(argo_path_derived+ str(wmo_n) + '_derived_2.nc')
     print(str(wmo_n)+ ' finished')
 
@@ -281,4 +333,30 @@ def calc_derived_3_pCO2_impacts(argo_path_derived, file):
     argo_n['pCO2_pH_O2_ESPER_TALK_orig'] = (['N_PROF','N_LEVELS'],results['pCO2'])  
     argo_n['DIC_pH_O2_ESPER_TALK_orig'] = (['N_PROF','N_LEVELS'],results['dic'])  
  
+    # ESPER Version with oxygen removed entirely
+    argo_n['PH_IN_SITU_TOTAL_ADJUSTED_wo_O2_ESPER'] = \
+            argo_n.PH_IN_SITU_TOTAL_ADJUSTED_wo_O2_ESPER.where(argo_n.PH_IN_SITU_TOTAL_ADJUSTED_wo_O2_ESPER>0)
+
+    results = pyco2.sys(
+            par1=argo_n.TALK_LIAR, 
+            par2=argo_n.PH_IN_SITU_TOTAL_ADJUSTED_wo_O2_ESPER,
+            par1_type=1,
+            par2_type=3,
+            temperature=argo_n.TEMP_ADJUSTED, 
+            pressure=argo_n.PRES_ADJUSTED, 
+            salinity=argo_n.PSAL_ADJUSTED, 
+            temperature_out=argo_n.TEMP_ADJUSTED, #fixed 25C temperature
+            pressure_out=argo_n.PRES_ADJUSTED,
+            total_silicate=SI,
+            total_phosphate=PO4,
+            opt_pH_scale = 1, #total
+            opt_k_carbonic=10, #Lueker et al. 2000
+            opt_k_bisulfate=1, # Dickson 1990 (Note, matlab co2sys combines KSO4 with TB. option 3 = KSO4 of Dickson & TB of Lee 2010)
+            opt_total_borate=2, # Lee et al. 2010
+            opt_k_fluoride=2, # Perez and Fraga 1987
+            opt_buffers_mode=1,
+    )
+    argo_n['pCO2_pH_wo_O2_ESPER_TALK_orig'] = (['N_PROF','N_LEVELS'],results['pCO2'])  
+    argo_n['DIC_pH_wo_O2_ESPER_TALK_orig'] = (['N_PROF','N_LEVELS'],results['dic'])  
+
     argo_n.to_netcdf(argo_path_derived+ str(wmo_n.values) + '_derived_3.nc')

@@ -180,7 +180,7 @@ def argo_interp_profiles(argo_path, LIAR_path, argo_path_interpolated, argo_path
                 pressure=argo_n.PRES_ADJUSTED, 
                 salinity=argo_n.PSAL_ADJUSTED, 
                 temperature_out=25.,#*np.ones(argo_n.PRES_ADJUSTED.shape), #fixed 25C temperature
-                pressure_out=argo_n.PRES_ADJUSTED,
+                pressure_out=1500., #argo_n.PRES_ADJUSTED, # fixed 1500 db output pressure
                 total_silicate=SI,
                 total_phosphate=PO4,
                 opt_pH_scale = 1, #total
@@ -190,7 +190,7 @@ def argo_interp_profiles(argo_path, LIAR_path, argo_path_interpolated, argo_path
                 opt_k_fluoride=2, # Perez and Fraga 1987
                 opt_buffers_mode=1,
         )
-        
+        argo_n['pH_25C_T_P1500'] = (['N_PROF','N_LEVELS'], results['pH_total_out'])
         argo_n['pH_25C_TOTAL_ADJUSTED'] = (['N_PROF','N_LEVELS'],carbon_utilities.co2sys_pH25C(argo_n.TALK_LIAR,
                                                     argo_n.PH_IN_SITU_TOTAL_ADJUSTED,
                                                     argo_n.TEMP_ADJUSTED,
