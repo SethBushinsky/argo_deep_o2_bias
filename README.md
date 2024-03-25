@@ -1,5 +1,9 @@
 # float_bgc_synthesis_products
 
+
+[![DOI](https://zenodo.org/badge/656396759.svg)](https://zenodo.org/doi/10.5281/zenodo.10866941)
+
+
 ## Download float data:
 ### float_download_sprof_meta.py
 - Saves:
