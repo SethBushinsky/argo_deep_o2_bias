@@ -29,7 +29,9 @@ def get_glodap(save_dir, year):
         url = 'https://www.ncei.noaa.gov/data/oceans/ncei/ocads/data/0237935/GLODAPv2.'+str(year)+'_Merged_Master_File.csv'
     elif year==2022:
         url = 'https://www.ncei.noaa.gov/data/oceans/ncei/ocads/data/0257247/GLODAPv2.2022_Merged_Master_File.csv'
-
+    elif year==2023:
+        url = 'https://www.ncei.noaa.gov/data/oceans/ncei/ocads/data/0283442/GLODAPv2.2023_Merged_Master_File.csv'
+        
     print(url)
     if not os.path.exists(save_dir+'GLODAPv2.'+str(year)+'_Merged_Master_File.csv'):
         os.system('wget %s -P %s' % (url,save_dir))

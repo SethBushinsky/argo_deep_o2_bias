@@ -28,10 +28,12 @@ def argo_interp_profiles(argo_path, LIAR_path, argo_path_interpolated, argo_path
             qc_val = argo_n[q+'_QC'].values.astype('float')
             
             # for some reason the .where statement was not filtering out bad values. 
-            #This code is now changing QC values of 3 or 4 to nans, not sure if it is the best approach
+            # This code is now changing QC values of 0 (no qc), 3(probably bad), 4(bad), and 9 (missing value) to nans. 
+            # interpolated values are set to nan next for BGC data
             #argo_n[q].where(np.logical_and(qc_val<3.,qc_val>4.))
             argo_n[q].values[np.logical_or(qc_val==4,qc_val==3)]=np.nan
-            
+            argo_n[q].values[np.logical_or(qc_val==0,qc_val==9)]=np.nan
+
             #check for any Inf values not included in QC flag and set to NaN
             argo_n[q].values[np.isinf(argo_n[q]).values] = np.nan
         
